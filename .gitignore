@@ -1,0 +1,70 @@
+# Gradle / Java
+.gradle/
+**/.gradle/
+build/
+**/build/
+out/
+**/out/
+bin/
+**/bin/
+*.class
+
+# IntelliJ IDEA
+.idea/
+**/.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code
+.vscode/
+**/.vscode/
+
+# Eclipse / STS
+.classpath
+.project
+.settings/
+.factorypath
+.springBeans
+.sts4-cache/
+
+# Logs
+logs/
+**/logs/
+*.log
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+application-local.properties
+application-secret.properties
+application-secrets.properties
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary / backup
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+*.rar
+*.7z
+
+# Runtime generated
+uploads/
+**/uploads/
+temp/
+**/temp/
+tmp/
+**/tmp/
+
+# Test / coverage
+coverage/
+test-output/
+reports/

@@ -1,0 +1,45 @@
+server:
+  port: 8080
+
+spring:
+  data:
+    mongodb:
+      # New database for the Meeting Room application.
+      # Override MONGODB_URI when using the same MongoDB server as the sample project.
+      uri: ${MONGODB_URI:mongodb://localhost:27017}
+      database: ${MONGODB_DATABASE:meeting_room_booking}
+      auto-index-creation: true
+
+app:
+  jwt-secret: "CHANGE_THIS_DEMO_SECRET_TO_A_LONG_RANDOM_VALUE_BEFORE_PRODUCTION_2026"
+  jwt-expiration-minutes: 480
+  time-zone: Asia/Ho_Chi_Minh
+  cors-origins: "http://localhost:5173,http://localhost:3000"
+
+  # Active Directory / Domain login. Defaults mirror the supplied portal source.
+  ldap:
+    enabled: ${LDAP_ENABLED:true}
+    urls: ${LDAP_URLS:ldaps://VN-DC2.youngonevn.com:636}
+    base-dn: ${LDAP_BASE_DN:DC=youngonevn,DC=com}
+    domain: ${LDAP_DOMAIN:youngonevn.com}
+    netbios-domain: ${LDAP_NETBIOS_DOMAIN:YOUNGONEVN}
+    authentication-mode: ${LDAP_AUTHENTICATION_MODE:KERBEROS_GSSAPI}
+    bare-username-bind-format: ${LDAP_BARE_USERNAME_BIND_FORMAT:NETBIOS}
+    connect-timeout-ms: ${LDAP_CONNECT_TIMEOUT_MS:5000}
+    read-timeout-ms: ${LDAP_READ_TIMEOUT_MS:7000}
+    trust:
+      enabled: ${LDAP_TRUST_ENABLED:true}
+      use-jvm-default: ${LDAP_TRUST_USE_JVM_DEFAULT:true}
+      use-windows-root: ${LDAP_TRUST_USE_WINDOWS_ROOT:true}
+      certificate-locations: ${LDAP_TRUST_CERTIFICATE_LOCATIONS:}
+  kerberos:
+    realm: ${KERBEROS_REALM:YOUNGONEVN.COM}
+    kdc: ${KERBEROS_KDC:VN-DC2.youngonevn.com}
+    ldap-qop: ${KERBEROS_LDAP_QOP:auth}
+    debug: ${KERBEROS_DEBUG:false}
+  booking:
+    business-start: "07:00"
+    business-end: "18:00"
+    min-duration-minutes: 15
+    max-duration-minutes: 240
+    max-advance-days: 90
