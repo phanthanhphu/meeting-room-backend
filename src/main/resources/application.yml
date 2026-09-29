@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8084
 
 spring:
   data:
@@ -14,7 +14,6 @@ app:
   jwt-secret: "CHANGE_THIS_DEMO_SECRET_TO_A_LONG_RANDOM_VALUE_BEFORE_PRODUCTION_2026"
   jwt-expiration-minutes: 480
   time-zone: Asia/Ho_Chi_Minh
-  cors-origins: "http://localhost:5173,http://localhost:3000"
 
   # Active Directory / Domain login. Defaults mirror the supplied portal source.
   ldap:
