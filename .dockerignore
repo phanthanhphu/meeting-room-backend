@@ -1,0 +1,13 @@
+.gradle
+build
+out
+.idea
+.vscode
+.git
+.gitignore
+*.iml
+*.log
+*.rar
+*.zip
+*.7z
+README*.md

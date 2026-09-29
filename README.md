@@ -65,7 +65,7 @@ Requirements:
 ```bash
 gradle bootRun
 ```
-API: `http://localhost:8080/api`
+API: `http://localhost:8084/api`
 
 Demo seed accounts on an empty database:
 - Admin: `admin / admin123`
