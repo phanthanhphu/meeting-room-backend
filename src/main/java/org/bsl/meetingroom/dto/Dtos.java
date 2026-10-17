@@ -44,8 +44,17 @@ public final class Dtos {
             @Min(1) @Max(500) int capacity,
             @Size(max=1000) String description,
             @Size(max=1000) String amenities,
-            @NotNull RoomStatus status) {}
-    public record RoomResponse(String id,String code,String name,String location,int capacity,String description,String amenities,RoomStatus status) {}
+            @NotNull RoomStatus status,
+            List<@NotBlank String> equipmentIds) {}
+    public record RoomResponse(String id,String code,String name,String location,int capacity,String description,String amenities,RoomStatus status,List<String> equipmentIds) {}
+
+    public record EquipmentRequest(
+            @NotBlank @Size(max=40) String code,
+            @NotBlank @Size(max=120) String name,
+            @NotBlank String category,
+            @Size(max=500) String description,
+            @NotNull EquipmentStatus status) {}
+    public record EquipmentResponse(String id,String code,String name,String category,String description,EquipmentStatus status) {}
 
     public record BookingRequest(
             @NotBlank String roomId,

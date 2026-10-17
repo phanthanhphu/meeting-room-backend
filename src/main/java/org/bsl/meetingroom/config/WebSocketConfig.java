@@ -10,14 +10,16 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
     private final AppEventSocketHandler handler;
+    private final FrontendOriginConfig frontendOrigins;
 
-    public WebSocketConfig(AppEventSocketHandler handler) {
+    public WebSocketConfig(AppEventSocketHandler handler, FrontendOriginConfig frontendOrigins) {
         this.handler = handler;
+        this.frontendOrigins = frontendOrigins;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(handler, "/ws/app-events")
-                .setAllowedOriginPatterns(SecurityConfig.FRONTEND_ORIGIN_PATTERNS.toArray(String[]::new));
+                .setAllowedOriginPatterns(frontendOrigins.getOrigins().toArray(String[]::new));
     }
 }

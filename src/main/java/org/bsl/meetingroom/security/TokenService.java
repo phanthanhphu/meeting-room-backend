@@ -5,22 +5,50 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.bsl.meetingroom.model.User;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.*;
 
 @Service
 public class TokenService {
+    private static final Logger log=LoggerFactory.getLogger(TokenService.class);
     private final ObjectMapper mapper;
     private final byte[] secret;
     private final long expirationMinutes;
     private final Base64.Encoder encoder=Base64.getUrlEncoder().withoutPadding();
     private final Base64.Decoder decoder=Base64.getUrlDecoder();
 
-    public TokenService(ObjectMapper mapper,@Value("${app.jwt-secret}") String secret,@Value("${app.jwt-expiration-minutes:480}") long expirationMinutes){
-        this.mapper=mapper; this.secret=secret.getBytes(StandardCharsets.UTF_8); this.expirationMinutes=expirationMinutes;
+    public TokenService(ObjectMapper mapper,
+                        @Value("${app.jwt-secret:}") String configuredSecret,
+                        @Value("${app.jwt-expiration-minutes:480}") long expirationMinutes,
+                        Environment environment){
+        this.mapper=mapper;
+        this.expirationMinutes=expirationMinutes;
+        boolean production=environment.acceptsProfiles(Profiles.of("prod","production"));
+        if(configuredSecret==null || configuredSecret.isBlank()){
+            if(production){
+                throw new IllegalStateException("APP_JWT_SECRET is required when using the prod/production Spring profile.");
+            }
+            // A secure local-only fallback: no hard-coded or committed shared secret.
+            byte[] generatedKey=new byte[32];
+            new SecureRandom().nextBytes(generatedKey);
+            this.secret=generatedKey;
+            log.warn("APP_JWT_SECRET is not set. Generated a temporary JWT key for local development. "
+                    + "Users will need to log in again after each backend restart. "
+                    + "Configure APP_JWT_SECRET for production or multiple backend instances.");
+        }else{
+            this.secret=configuredSecret.getBytes(StandardCharsets.UTF_8);
+            if(production && this.secret.length<32){
+                throw new IllegalStateException("APP_JWT_SECRET must be at least 32 UTF-8 bytes for production.");
+            }
+        }
     }
 
     public String generate(User user){

@@ -4,6 +4,8 @@ import org.springframework.data.annotation.*;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Document(collection="meeting_rooms")
 public class MeetingRoom {
@@ -14,6 +16,7 @@ public class MeetingRoom {
     private int capacity;
     private String description;
     private String amenities;
+    private List<String> equipmentIds=new ArrayList<>();
     private RoomStatus status=RoomStatus.AVAILABLE;
     @CreatedDate private LocalDateTime createdAt;
     @LastModifiedDate private LocalDateTime updatedAt;
@@ -26,6 +29,7 @@ public class MeetingRoom {
     public int getCapacity(){return capacity;} public void setCapacity(int v){capacity=v;}
     public String getDescription(){return description;} public void setDescription(String v){description=v;}
     public String getAmenities(){return amenities;} public void setAmenities(String v){amenities=v;}
+    public List<String> getEquipmentIds(){return equipmentIds==null?List.of():equipmentIds;} public void setEquipmentIds(List<String> v){equipmentIds=v==null?new ArrayList<>():new ArrayList<>(v);}
     public RoomStatus getStatus(){return status;} public void setStatus(RoomStatus v){status=v;}
     public LocalDateTime getCreatedAt(){return createdAt;} public LocalDateTime getUpdatedAt(){return updatedAt;}
     public Long getVersion(){return version;}

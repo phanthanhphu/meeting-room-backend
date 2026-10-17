@@ -8,15 +8,18 @@ import org.bsl.meetingroom.repository.*;
 import org.springframework.stereotype.Service;
 import java.time.*;
 import java.util.List;
+import java.util.Set;
+import java.util.LinkedHashSet;
 
 @Service
 public class RoomService {
     private final MeetingRoomRepository rooms;
+    private final EquipmentRepository equipment;
     private final BookingRepository bookings;
     private final Clock clock;
     private final AppSocketPublisher socket;
     private final NotificationService notifications;
-    public RoomService(MeetingRoomRepository rooms,BookingRepository bookings,Clock clock,AppSocketPublisher socket,NotificationService notifications){this.rooms=rooms;this.bookings=bookings;this.clock=clock;this.socket=socket;this.notifications=notifications;}
+    public RoomService(MeetingRoomRepository rooms,EquipmentRepository equipment,BookingRepository bookings,Clock clock,AppSocketPublisher socket,NotificationService notifications){this.rooms=rooms;this.equipment=equipment;this.bookings=bookings;this.clock=clock;this.socket=socket;this.notifications=notifications;}
     public List<RoomResponse> list(){return rooms.findAllByOrderByNameAsc().stream().map(ResponseMapper::room).toList();}
     public RoomResponse get(String id){return ResponseMapper.room(find(id));}
     MeetingRoom find(String id){return rooms.findById(id).orElseThrow(()->AppException.notFound("Không tìm thấy phòng họp"));}
@@ -60,6 +63,20 @@ public class RoomService {
     }
     private void apply(MeetingRoom r,RoomRequest req){
         r.setCode(req.code().trim().toUpperCase());r.setName(req.name().trim());r.setLocation(req.location().trim());r.setCapacity(req.capacity());
-        r.setDescription(req.description());r.setAmenities(req.amenities());r.setStatus(req.status());
+        r.setDescription(req.description());r.setStatus(req.status());
+        // Null means a legacy client sent only "amenities"; [] explicitly means no equipment.
+        if(req.equipmentIds()!=null){
+            Set<String> ids=new LinkedHashSet<>(req.equipmentIds());
+            if(ids.size()!=req.equipmentIds().size())throw AppException.badRequest("DUPLICATE_EQUIPMENT","Một thiết bị không thể chọn nhiều lần");
+            var selected=equipment.findAllById(ids);
+            if(selected.size()!=ids.size())throw AppException.badRequest("UNKNOWN_EQUIPMENT","Danh sách có thiết bị không tồn tại");
+            for(var device:selected){
+                if(device.getStatus()==EquipmentStatus.INACTIVE)throw AppException.badRequest("INACTIVE_EQUIPMENT","Không thể gán thiết bị đã ngừng sử dụng: "+device.getName());
+            }
+            r.setEquipmentIds(List.copyOf(ids));
+            r.setAmenities(selected.stream().map(Equipment::getName).sorted().reduce((a,b)->a+", "+b).orElse(""));
+        }else{
+            r.setAmenities(req.amenities());
+        }
     }
 }

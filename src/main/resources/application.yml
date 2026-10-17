@@ -1,5 +1,5 @@
 server:
-  port: 8084
+  port: ${SERVER_PORT:8084}
 
 spring:
   data:
@@ -11,7 +11,15 @@ spring:
       auto-index-creation: true
 
 app:
-  jwt-secret: "CHANGE_THIS_DEMO_SECRET_TO_A_LONG_RANDOM_VALUE_BEFORE_PRODUCTION_2026"
+  # Frontend browser origins permitted by Spring Security CORS and WebSocket.
+  # IMPORTANT: Origin is the address where the web UI was opened, NOT the API URL.
+  # APP_FRONTEND_ORIGINS can override the complete comma-separated list.
+  cors:
+    allowed-origin-patterns: ${APP_FRONTEND_ORIGINS:http://localhost:3004,http://127.0.0.1:3004,http://10.232.100.69:3004,http://10.232.132.61:3004}
+  # Optional for local development: TokenService will generate an in-memory 256-bit key.
+  # Required when SPRING_PROFILES_ACTIVE=prod or production.
+  # For shared/multi-instance deployments, always configure a persistent key.
+  jwt-secret: ${APP_JWT_SECRET:}
   jwt-expiration-minutes: 480
   time-zone: Asia/Ho_Chi_Minh
 

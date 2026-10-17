@@ -17,7 +17,7 @@ public class ResponseMapper {
                 u.getAccountSource()==null?AccountSource.SYSTEM:u.getAccountSource(),u.getRole(),u.isEnabled());
     }
     public static RoomResponse room(MeetingRoom r){
-        return new RoomResponse(r.getId(),r.getCode(),r.getName(),r.getLocation(),r.getCapacity(),r.getDescription(),r.getAmenities(),r.getStatus());
+        return new RoomResponse(r.getId(),r.getCode(),r.getName(),r.getLocation(),r.getCapacity(),r.getDescription(),r.getAmenities(),r.getStatus(),r.getEquipmentIds());
     }
     public BookingResponse booking(Booking b){
         MeetingRoom room=rooms.findById(b.getRoomId()).orElse(null);

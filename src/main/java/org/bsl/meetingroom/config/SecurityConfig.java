@@ -21,15 +21,11 @@ import java.util.List;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    /**
-     * Frontend origins are managed here in one place for the backend.
-     * Meeting Room FE runs on port 3004 from localhost or 10.232.100.69.
-     */
-    public static final List<String> FRONTEND_ORIGIN_PATTERNS = List.of(
-            "http://localhost:3004",
-            "http://127.0.0.1:3004",
-            "http://10.232.100.69:3004"
-    );
+    private final FrontendOriginConfig frontendOrigins;
+
+    public SecurityConfig(FrontendOriginConfig frontendOrigins) {
+        this.frontendOrigins = frontendOrigins;
+    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -39,7 +35,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(FRONTEND_ORIGIN_PATTERNS);
+        configuration.setAllowedOriginPatterns(frontendOrigins.getOrigins());
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setExposedHeaders(List.of("Authorization", "X-Total-Count"));
