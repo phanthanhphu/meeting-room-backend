@@ -26,6 +26,8 @@ public interface BookingRepository extends MongoRepository<Booking,String>{
             Collection<BookingStatus> statuses, LocalDateTime endAt, LocalDateTime startAt);
 
     long countByRoomIdAndStatusAndEndAtAfter(String roomId,BookingStatus status,LocalDateTime now);
+    boolean existsByRoomIdAndStatusAndEndAtAfterAndAttendeeCountGreaterThan(
+            String roomId, BookingStatus status, LocalDateTime now, int capacity);
     long countByStatus(BookingStatus status);
     long countByCreatedByIdAndStatus(String userId,BookingStatus status);
     long countByCreatedByIdAndStartAtBetweenAndStatus(String userId,LocalDateTime start,LocalDateTime end,BookingStatus status);

@@ -23,7 +23,8 @@ class DomainAutoProvisionTest {
                 mock(BookingRepository.class),
                 new BCryptPasswordEncoder(4),
                 mock(AppSocketPublisher.class),
-                mock(NotificationService.class)
+                mock(NotificationService.class),
+                mock(org.bsl.meetingroom.security.TokenService.class)
         );
     }
 
@@ -90,4 +91,20 @@ class DomainAutoProvisionTest {
         assertEquals("nguyenvana.st", resolved.getDomainAccount());
         verify(users, never()).delete(any(User.class));
     }
+    @Test
+    void domainEmailCollisionCannotInheritDifferentSystemAdmin() {
+        UserRepository users=mock(UserRepository.class);
+        User admin=new User();
+        admin.setId("admin-1"); admin.setUsername("real.admin");
+        admin.setEmail("real.admin@youngonevn.com");
+        admin.setRole(Role.ADMIN); admin.setEnabled(true);
+        admin.setAccountSource(AccountSource.SYSTEM);
+        when(users.findByEmailIgnoreCase("real.admin@youngonevn.com")).thenReturn(Optional.of(admin));
+        ActiveDirectoryService.DirectoryUser different=new ActiveDirectoryService.DirectoryUser(
+                "another.person","another.person@youngonevn.com","real.admin@youngonevn.com","Other Person");
+        assertThrows(org.bsl.meetingroom.exception.AppException.class,
+                () -> service(users).resolveOrProvisionDomainUser(different,"real.admin@youngonevn.com"));
+        verify(users,never()).save(any(User.class));
+    }
+
 }

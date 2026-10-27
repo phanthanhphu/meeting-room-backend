@@ -7,6 +7,7 @@ import org.bsl.meetingroom.model.*;
 import org.bsl.meetingroom.repository.BookingRepository;
 import org.bsl.meetingroom.repository.UserRepository;
 import org.bsl.meetingroom.security.PasswordPolicy;
+import org.bsl.meetingroom.security.TokenService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import java.security.SecureRandom;
@@ -21,9 +22,16 @@ public class UserService {
     private final SecureRandom random = new SecureRandom();
     private final AppSocketPublisher socket;
     private final NotificationService notifications;
+    private final TokenService tokens;
 
-    public UserService(UserRepository repo,BookingRepository bookings,PasswordEncoder encoder,AppSocketPublisher socket,NotificationService notifications){
-        this.repo=repo;this.bookings=bookings;this.encoder=encoder;this.socket=socket;this.notifications=notifications;
+    public UserService(UserRepository repo, BookingRepository bookings, PasswordEncoder encoder,
+                       AppSocketPublisher socket, NotificationService notifications, TokenService tokens) {
+        this.repo = repo;
+        this.bookings = bookings;
+        this.encoder = encoder;
+        this.socket = socket;
+        this.notifications = notifications;
+        this.tokens = tokens;
     }
 
     public List<UserResponse> list(){return repo.findAll().stream().map(ResponseMapper::user).toList();}
@@ -52,6 +60,15 @@ public class UserService {
 
         if (match.isPresent()) {
             User existing = match.get();
+            // Privileged SYSTEM accounts must match the verified AD logon identity,
+            // not just a mutable/display email field. Preserve intentional pre-created
+            // SYSTEM/ADMIN accounts whose username is the authenticated SAM account.
+            if (existing.getAccountSource() == AccountSource.SYSTEM
+                    && (existing.getRole() == Role.ADMIN || existing.getRole() == Role.ROOM_MANAGER)
+                    && !sam.equals(normalize(existing.getUsername()))
+                    && !sam.equals(normalize(existing.getDomainAccount()))) {
+                throw AppException.forbidden("Domain identity does not match the privileged System account. Ask Admin to review the account binding.");
+            }
             boolean changed = false;
 
             if (existing.getAccountSource() == null) {
@@ -104,8 +121,8 @@ public class UserService {
     public UserResponse create(CreateUserRequest req,User actor){
         String username=req.username().trim();
         String email=req.email().trim();
-        if(repo.existsByUsernameIgnoreCase(username)) throw AppException.conflict("USERNAME_EXISTS","Username đã tồn tại");
-        if(repo.existsByEmailIgnoreCase(email)) throw AppException.conflict("EMAIL_EXISTS","Email đã tồn tại");
+        if(repo.existsByUsernameIgnoreCase(username)) throw AppException.conflict("USERNAME_EXISTS","Username already exists.");
+        if(repo.existsByEmailIgnoreCase(email)) throw AppException.conflict("EMAIL_EXISTS","Email already exists.");
         User u=new User();
         u.setUsername(username);
         u.setEmail(email);
@@ -129,11 +146,11 @@ public class UserService {
         AccountSource source = u.getAccountSource()==null ? AccountSource.SYSTEM : u.getAccountSource();
         if (source == AccountSource.SYSTEM) {
             repo.findByEmailIgnoreCase(req.email()).ifPresent(existing->{
-                if(!Objects.equals(existing.getId(),id)) throw AppException.conflict("EMAIL_EXISTS","Email đã tồn tại");
+                if(!Objects.equals(existing.getId(),id)) throw AppException.conflict("EMAIL_EXISTS","Email already exists.");
             });
         }
         if(Objects.equals(u.getId(),actor.getId()) && (!req.enabled() || req.role()!=Role.ADMIN))
-            throw AppException.badRequest("SELF_ROLE_CHANGE","Admin không thể tự khóa hoặc hạ quyền tài khoản của mình");
+            throw AppException.badRequest("SELF_ROLE_CHANGE","Administrators cannot disable or downgrade their own account.");
         // DOMAIN email/domainAccount are directory identity fields and are not editable locally.
         if (source == AccountSource.SYSTEM) u.setEmail(req.email().trim());
         u.setFullName(req.fullName().trim());
@@ -154,7 +171,7 @@ public class UserService {
     public UserResponse setEnabled(String id,boolean enabled,User actor){
         User u=find(id);
         if(Objects.equals(u.getId(),actor.getId()) && !enabled)
-            throw AppException.badRequest("SELF_DISABLE","Admin không thể tự khóa tài khoản của mình");
+            throw AppException.badRequest("SELF_DISABLE","Administrators cannot disable their own account.");
         if(u.isEnabled()!=enabled) u.setAuthVersion(u.getAuthVersion()+1);
         u.setEnabled(enabled);
         UserResponse saved=ResponseMapper.user(repo.save(u));
@@ -166,28 +183,40 @@ public class UserService {
         return saved;
     }
 
-    public ResetPasswordResponse resetPassword(String id,User actor){
-        User u=find(id);
-        if (u.getAccountSource() == AccountSource.DOMAIN)
-            throw AppException.badRequest("DOMAIN_PASSWORD_MANAGED_BY_AD", "Domain account password is managed by Active Directory and cannot be reset here.");
-        String temp=PasswordPolicy.generate(random);
-        u.setPasswordHash(encoder.encode(temp));
-        u.setAuthVersion(u.getAuthVersion()+1);
-        repo.save(u);
-        notifications.notifyUser(u.getId(),NotificationType.USER_PASSWORD_RESET,"Password reset",
-                "Your password was reset by "+actor.getFullName()+". Sign in using the temporary password provided by Admin.","USER",u.getId(),"/dashboard");
-        notifications.notifyAdminsExcept(actor.getId(),NotificationType.USER_PASSWORD_RESET,"Password reset",
-                actor.getFullName()+" reset password for "+u.getFullName()+".","USER",u.getId(),"/users");
-        socket.publish("USER_CHANGED");
-        return new ResetPasswordResponse(temp);
+    public ResetPasswordResponse resetPassword(String id, User actor) {
+        User target = find(id);
+        if (target.getAccountSource() == AccountSource.DOMAIN) {
+            throw AppException.badRequest("DOMAIN_PASSWORD_MANAGED_BY_AD",
+                    "Domain account passwords are managed by Active Directory and cannot be reset here.");
+        }
+        boolean selfReset = Objects.equals(actor.getId(), target.getId());
+        String temporaryPassword = PasswordPolicy.generate(random);
+        target.setPasswordHash(encoder.encode(temporaryPassword));
+        // Revoking previous tokens also ends other sessions for this account.
+        target.setAuthVersion(target.getAuthVersion() + 1);
+        User saved = repo.save(target);
+        String replacementToken = selfReset ? tokens.generate(saved) : null;
+
+        if (!selfReset) {
+            notifications.notifyUser(saved.getId(), NotificationType.USER_PASSWORD_RESET, "Password reset",
+                    "Your password was reset by " + actor.getFullName()
+                            + ". Sign in using the temporary password provided by Admin.",
+                    "USER", saved.getId(), "/rooms");
+            notifications.notifyAdminsExcept(actor.getId(), NotificationType.USER_PASSWORD_RESET, "Password reset",
+                    actor.getFullName() + " reset the password for " + saved.getFullName() + ".",
+                    "USER", saved.getId(), "/users");
+        }
+        // Avoid broadcasting or issuing notifications during a self-reset: a refresh from
+        // the existing JWT could log the Admin out before the response rotates the token.
+        return new ResetPasswordResponse(temporaryPassword, replacementToken);
     }
 
     public void delete(String id,User actor){
         User u=find(id);
         if(Objects.equals(u.getId(),actor.getId()))
-            throw AppException.badRequest("SELF_DELETE","Admin không thể xóa tài khoản của mình");
+            throw AppException.badRequest("SELF_DELETE","Administrators cannot delete their own account.");
         if(bookings.existsByCreatedById(id))
-            throw AppException.conflict("USER_HAS_BOOKINGS","User đã có lịch sử booking; hãy Disable thay vì Delete");
+            throw AppException.conflict("USER_HAS_BOOKINGS","This user has booking history. Disable the account instead of deleting it.");
         String fullName=u.getFullName();
         notifications.deleteForUser(id);
         repo.delete(u);
@@ -197,6 +226,6 @@ public class UserService {
     }
 
     private User find(String id){
-        return repo.findById(id).orElseThrow(()->AppException.notFound("Không tìm thấy user"));
+        return repo.findById(id).orElseThrow(()->AppException.notFound("User not found."));
     }
 }

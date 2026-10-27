@@ -22,6 +22,41 @@ import static org.mockito.Mockito.*;
 class PasswordResetLoginTest {
 
     @Test
+    void adminCanAutomaticallyResetTheirOwnPasswordAndReceiveARotatedToken() {
+        UserRepository users = mock(UserRepository.class);
+        BookingRepository bookings = mock(BookingRepository.class);
+        TokenService tokens = mock(TokenService.class);
+        AppSocketPublisher socket = mock(AppSocketPublisher.class);
+        NotificationService notifications = mock(NotificationService.class);
+        PasswordEncoder encoder = new BCryptPasswordEncoder(4);
+
+        User admin = new User();
+        admin.setId("admin-1");
+        admin.setUsername("admin");
+        admin.setFullName("Administrator");
+        admin.setRole(Role.ADMIN);
+        admin.setEnabled(true);
+        admin.setAccountSource(AccountSource.SYSTEM);
+        admin.setPasswordHash(encoder.encode("PreviousAdmin@123"));
+        admin.setAuthVersion(8L);
+
+        when(users.findById("admin-1")).thenReturn(Optional.of(admin));
+        when(users.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tokens.generate(admin)).thenReturn("rotated-admin-token");
+
+        UserService service = new UserService(users, bookings, encoder, socket, notifications, tokens);
+        var response = service.resetPassword("admin-1", admin);
+
+        assertEquals("rotated-admin-token", response.token());
+        assertTrue(encoder.matches(response.temporaryPassword(), admin.getPasswordHash()));
+        assertFalse(encoder.matches("PreviousAdmin@123", admin.getPasswordHash()));
+        assertEquals(9L, admin.getAuthVersion());
+        verify(tokens).generate(admin);
+        verifyNoInteractions(notifications);
+        verifyNoInteractions(socket);
+    }
+
+    @Test
     void resetPasswordCanLoginImmediatelyAndOldPasswordStopsWorking() {
         UserRepository users = mock(UserRepository.class);
         BookingRepository bookings = mock(BookingRepository.class);
@@ -54,7 +89,7 @@ class PasswordResetLoginTest {
         when(users.findByEmailIgnoreCase("user.one")).thenReturn(Optional.empty());
         when(tokens.generate(target)).thenReturn("token");
 
-        UserService userService = new UserService(users, bookings, encoder, socket, notifications);
+        UserService userService = new UserService(users, bookings, encoder, socket, notifications, tokens);
         AuthService authService = new AuthService(users, encoder, tokens, activeDirectory, userService, "youngonevn.com");
 
         String temporaryPassword = userService.resetPassword("user-1", admin).temporaryPassword();

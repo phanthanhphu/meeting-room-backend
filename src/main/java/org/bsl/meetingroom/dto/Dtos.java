@@ -35,7 +35,8 @@ public final class Dtos {
             @Size(max=120) String department,
             @NotNull Role role,
             boolean enabled) {}
-    public record ResetPasswordResponse(String temporaryPassword) {}
+    // Token is returned only when an administrator resets their own System Account password.
+    public record ResetPasswordResponse(String temporaryPassword, String token) {}
 
     public record RoomRequest(
             @NotBlank @Size(max=40) String code,

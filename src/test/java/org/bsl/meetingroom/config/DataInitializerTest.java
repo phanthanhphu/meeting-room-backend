@@ -27,7 +27,7 @@ import static org.mockito.Mockito.*;
 class DataInitializerTest {
 
     @Test
-    void startupCreatesDefaultAdminEvenWhenOtherUsersExist() throws Exception {
+    void startupCreatesAdminOnlyWithStrongBootstrapSecret() throws Exception {
         UserRepository users = mock(UserRepository.class);
         MeetingRoomRepository rooms = mock(MeetingRoomRepository.class);
         EquipmentRepository equipment = mock(EquipmentRepository.class);
@@ -55,7 +55,7 @@ class DataInitializerTest {
         MongoTemplate mongoTemplate = mock(MongoTemplate.class);
         when(mongoTemplate.findDistinct(any(Query.class), eq("role"), eq("users"), eq(String.class)))
                 .thenReturn(List.of());
-        CommandLineRunner runner = new DataInitializer().seed(users, rooms, equipment, encoder, mongoTemplate);
+        CommandLineRunner runner = new DataInitializer().seed(users, rooms, equipment, encoder, mongoTemplate, "BootstrapSecret@2026");
         runner.run();
 
         User admin = saved.stream()
@@ -66,11 +66,11 @@ class DataInitializerTest {
         assertEquals("admin", admin.getUsername());
         assertEquals(Role.ADMIN, admin.getRole());
         assertTrue(admin.isEnabled());
-        assertTrue(encoder.matches("123456", admin.getPasswordHash()));
+        assertTrue(encoder.matches("BootstrapSecret@2026", admin.getPasswordHash()));
     }
 
     @Test
-    void startupRepairsExistingAdminPasswordRoleAndEnabledState() throws Exception {
+    void startupNeverResetsExistingAdminPasswordRoleOrEnabledState() throws Exception {
         UserRepository users = mock(UserRepository.class);
         MeetingRoomRepository rooms = mock(MeetingRoomRepository.class);
         EquipmentRepository equipment = mock(EquipmentRepository.class);
@@ -78,6 +78,7 @@ class DataInitializerTest {
 
         User admin = new User();
         admin.setId("admin-id");
+        admin.setAccountSource(org.bsl.meetingroom.model.AccountSource.SYSTEM);
         admin.setUsername("admin");
         admin.setEmail("admin@youngonevn.com");
         admin.setFullName("Old Admin");
@@ -95,13 +96,29 @@ class DataInitializerTest {
         MongoTemplate mongoTemplate = mock(MongoTemplate.class);
         when(mongoTemplate.findDistinct(any(Query.class), eq("role"), eq("users"), eq(String.class)))
                 .thenReturn(List.of());
-        CommandLineRunner runner = new DataInitializer().seed(users, rooms, equipment, encoder, mongoTemplate);
+        CommandLineRunner runner = new DataInitializer().seed(users, rooms, equipment, encoder, mongoTemplate, "BootstrapSecret@2026");
         runner.run();
 
-        assertEquals(Role.ADMIN, admin.getRole());
-        assertTrue(admin.isEnabled());
-        assertTrue(encoder.matches("123456", admin.getPasswordHash()));
-        assertEquals(6L, admin.getAuthVersion());
+        assertEquals(Role.USER, admin.getRole());
+        assertFalse(admin.isEnabled());
+        assertTrue(encoder.matches("WrongPassword@123", admin.getPasswordHash()));
+        assertEquals(5L, admin.getAuthVersion());
+        verify(users, never()).save(admin);
+    }
+
+    @Test
+    void bootstrapRefusesInsecureOrMissingSecret() {
+        UserRepository users=mock(UserRepository.class);
+        MeetingRoomRepository rooms=mock(MeetingRoomRepository.class);
+        EquipmentRepository equipment=mock(EquipmentRepository.class);
+        PasswordEncoder encoder=new BCryptPasswordEncoder(4);
+        MongoTemplate mongoTemplate=mock(MongoTemplate.class);
+        when(mongoTemplate.findDistinct(any(Query.class),eq("role"),eq("users"),eq(String.class))).thenReturn(List.of());
+        when(users.findByEmailIgnoreCase("admin@youngonevn.com")).thenReturn(Optional.empty());
+        when(users.findByUsernameIgnoreCase("admin")).thenReturn(Optional.empty());
+        var run = new DataInitializer().seed(users, rooms, equipment, encoder, mongoTemplate, "123456");
+        assertThrows(IllegalStateException.class, () -> run.run());
+        verify(users,never()).save(any(User.class));
     }
 
     @Test
@@ -121,7 +138,7 @@ class DataInitializerTest {
         when(users.findAll()).thenReturn(List.of());
         when(rooms.count()).thenReturn(1L);
 
-        new DataInitializer().seed(users, rooms, equipment, encoder, mongoTemplate).run();
+        new DataInitializer().seed(users, rooms, equipment, encoder, mongoTemplate, "BootstrapSecret@2026").run();
 
         ArgumentCaptor<Query> queries = ArgumentCaptor.forClass(Query.class);
         ArgumentCaptor<Update> updates = ArgumentCaptor.forClass(Update.class);

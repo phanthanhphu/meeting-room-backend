@@ -1,5 +1,7 @@
 package org.bsl.meetingroom.service;
 
+import org.bsl.meetingroom.common.constants.BookingLockConstants;
+
 import org.bsl.meetingroom.dto.Dtos.*;
 import org.bsl.meetingroom.common.socket.AppSocketPublisher;
 import org.bsl.meetingroom.exception.AppException;
@@ -16,10 +18,11 @@ public class RoomService {
     private final MeetingRoomRepository rooms;
     private final EquipmentRepository equipment;
     private final BookingRepository bookings;
+    private final MongoRoomApprovalLockService approvalLocks;
     private final Clock clock;
     private final AppSocketPublisher socket;
     private final NotificationService notifications;
-    public RoomService(MeetingRoomRepository rooms,EquipmentRepository equipment,BookingRepository bookings,Clock clock,AppSocketPublisher socket,NotificationService notifications){this.rooms=rooms;this.equipment=equipment;this.bookings=bookings;this.clock=clock;this.socket=socket;this.notifications=notifications;}
+    public RoomService(MeetingRoomRepository rooms,EquipmentRepository equipment,BookingRepository bookings,Clock clock,AppSocketPublisher socket,NotificationService notifications,MongoRoomApprovalLockService approvalLocks){this.rooms=rooms;this.equipment=equipment;this.bookings=bookings;this.clock=clock;this.socket=socket;this.notifications=notifications;this.approvalLocks=approvalLocks;}
     public List<RoomResponse> list(){return rooms.findAllByOrderByNameAsc().stream().map(ResponseMapper::room).toList();}
     public RoomResponse get(String id){return ResponseMapper.room(find(id));}
     MeetingRoom find(String id){return rooms.findById(id).orElseThrow(()->AppException.notFound("Không tìm thấy phòng họp"));}
@@ -34,12 +37,22 @@ public class RoomService {
     }
     public RoomResponse update(String id,RoomRequest req,User actor){
         requireRoomManager(actor);
+        String token=approvalLocks.tryAcquire(id,BookingLockConstants.ROOM_UPDATE_LOCK_TTL);
+        if(token==null) throw AppException.conflict("ROOM_UPDATE_BUSY", "Phòng đang được phê duyệt hoặc cập nhật. Vui lòng thử lại.");
+        try { return updateLocked(id,req,actor); }
+        finally { approvalLocks.release(id,token); }
+    }
+    private RoomResponse updateLocked(String id,RoomRequest req,User actor){
         MeetingRoom r=find(id);
         if(!r.getCode().equalsIgnoreCase(req.code().trim()) && rooms.existsByCodeIgnoreCase(req.code().trim()))
             throw AppException.conflict("ROOM_CODE_EXISTS","Mã phòng đã tồn tại");
         if(req.status()!=RoomStatus.AVAILABLE && r.getStatus()==RoomStatus.AVAILABLE){
             long future=bookings.countByRoomIdAndStatusAndEndAtAfter(id,BookingStatus.APPROVED,LocalDateTime.now(clock));
             if(future>0) throw AppException.conflict("ROOM_HAS_BOOKINGS","Phòng đang có lịch đã duyệt trong tương lai. Hãy xử lý các booking trước khi khóa phòng.");
+        }
+        if (req.capacity() < r.getCapacity() && bookings.existsByRoomIdAndStatusAndEndAtAfterAndAttendeeCountGreaterThan(
+                id, BookingStatus.APPROVED, LocalDateTime.now(clock), req.capacity())) {
+            throw AppException.conflict("ROOM_CAPACITY_CONFLICT", "Có lịch đã duyệt trong tương lai có số người vượt sức chứa mới.");
         }
         apply(r,req); RoomResponse saved=ResponseMapper.room(rooms.save(r));
         notifications.notifyAllEnabledExcept(actor.getId(),NotificationType.ROOM_UPDATED,"Meeting room updated",

@@ -1,6 +1,8 @@
 package org.bsl.meetingroom.config;
 
 import org.bsl.meetingroom.model.*;
+import org.bsl.meetingroom.security.PasswordPolicy;
+import org.springframework.beans.factory.annotation.Value;
 import org.bsl.meetingroom.repository.*;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
@@ -24,15 +26,15 @@ public class DataInitializer {
     private static final String USERS_COLLECTION = "users";
     private static final String DEFAULT_ADMIN_USERNAME = "admin";
     private static final String DEFAULT_ADMIN_EMAIL = "admin@youngonevn.com";
-    private static final String DEFAULT_ADMIN_PASSWORD = "123456";
 
     @Bean
-    CommandLineRunner seed(UserRepository users, MeetingRoomRepository rooms, EquipmentRepository equipment, PasswordEncoder encoder, MongoTemplate mongoTemplate) {
+    CommandLineRunner seed(UserRepository users, MeetingRoomRepository rooms, EquipmentRepository equipment, PasswordEncoder encoder, MongoTemplate mongoTemplate,
+                           @Value("${app.bootstrap-admin-password:}") String bootstrapAdminPassword) {
         return args -> {
             // Normalize legacy MongoDB enum values before any UserRepository read.
             // Spring Data maps enums case-sensitively: "Admin" cannot be read as Role.ADMIN.
             normalizeLegacyRoles(mongoTemplate);
-            ensureDefaultAdmin(users, encoder);
+            ensureDefaultAdmin(users, encoder, bootstrapAdminPassword);
 
             for (User existing : users.findAll()) {
                 boolean changed = false;
@@ -139,16 +141,25 @@ public class DataInitializer {
         }
     }
 
-    private void ensureDefaultAdmin(UserRepository users, PasswordEncoder encoder) {
-        User admin = users.findByEmailIgnoreCase(DEFAULT_ADMIN_EMAIL)
-                .or(() -> users.findByUsernameIgnoreCase(DEFAULT_ADMIN_USERNAME))
-                .orElseGet(User::new);
-
-        boolean isNew = admin.getId() == null;
-        boolean passwordChanged = admin.getPasswordHash() == null
-                || !encoder.matches(DEFAULT_ADMIN_PASSWORD, admin.getPasswordHash());
-        boolean authChanged = passwordChanged || admin.getRole() != Role.ADMIN || !admin.isEnabled();
-
+    // Bootstrap only once. Never reset password, role, enabled state, account identity or authVersion.
+    private void ensureDefaultAdmin(UserRepository users, PasswordEncoder encoder, String bootstrapPassword) {
+        var existing = users.findByEmailIgnoreCase(DEFAULT_ADMIN_EMAIL)
+                .or(() -> users.findByUsernameIgnoreCase(DEFAULT_ADMIN_USERNAME));
+        if (existing.isPresent()) {
+            // Preserve legacy credentials; flag insecure accounts for a deliberate Admin reset.
+            if (existing.get().getPasswordHash()!=null && encoder.matches("123456",existing.get().getPasswordHash())) {
+                log.warn("Existing bootstrap Admin still has a weak legacy password. Reset it immediately using an authorized procedure.");
+            }
+            if (existing.get().getRole() != Role.ADMIN || !existing.get().isEnabled()) {
+                log.warn("Bootstrap admin already exists but is not enabled ADMIN; review it using an authorized recovery procedure.");
+            }
+            return;
+        }
+        if (!PasswordPolicy.isValid(bootstrapPassword)) {
+            throw new IllegalStateException("To initialize a new Admin, set APP_BOOTSTRAP_ADMIN_PASSWORD "
+                    + "to a 12-100 character strong password. Existing accounts will never be overwritten.");
+        }
+        User admin = new User();
         admin.setUsername(DEFAULT_ADMIN_USERNAME);
         admin.setEmail(DEFAULT_ADMIN_EMAIL);
         admin.setFullName("Administrator");
@@ -156,15 +167,9 @@ public class DataInitializer {
         admin.setAccountSource(AccountSource.SYSTEM);
         admin.setRole(Role.ADMIN);
         admin.setEnabled(true);
-
-        if (passwordChanged) {
-            admin.setPasswordHash(encoder.encode(DEFAULT_ADMIN_PASSWORD));
-        }
-        if (!isNew && authChanged) {
-            admin.setAuthVersion(admin.getAuthVersion() + 1);
-        }
-
+        admin.setPasswordHash(encoder.encode(bootstrapPassword));
         users.save(admin);
+        log.info("Initial Admin account created. Change the bootstrap password and protect the environment secret.");
     }
 
     private MeetingRoom room(String code, String name, String location, int capacity, String amenities) {
