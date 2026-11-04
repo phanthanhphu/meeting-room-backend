@@ -1,6 +1,7 @@
 package org.bsl.meetingroom.service;
 
 import org.bsl.meetingroom.config.BookingRulesProperties;
+import org.bsl.meetingroom.mail.MailOutboxService;
 import org.bsl.meetingroom.common.constants.BookingLockConstants;
 import org.bsl.meetingroom.common.socket.AppSocketPublisher;
 import org.bsl.meetingroom.dto.Dtos.*;
@@ -29,12 +30,13 @@ public class BookingService {
     private final MongoRoomApprovalLockService approvalLocks;
     private final AppSocketPublisher socket;
     private final NotificationService notifications;
+    private final MailOutboxService mailOutbox;
 
     public BookingService(BookingRepository bookings,MeetingRoomRepository rooms,UserRepository users,
                           BookingHistoryRepository history,BookingRulesProperties rules,Clock clock,
-                          ResponseMapper mapper,MongoRoomApprovalLockService approvalLocks,AppSocketPublisher socket,NotificationService notifications, MongoTemplate mongo){
+                          ResponseMapper mapper,MongoRoomApprovalLockService approvalLocks,AppSocketPublisher socket,NotificationService notifications, MongoTemplate mongo,MailOutboxService mailOutbox){
         this.bookings=bookings;this.rooms=rooms;this.users=users;this.history=history;this.rules=rules;
-        this.clock=clock;this.mapper=mapper;this.mongo=mongo;this.approvalLocks=approvalLocks;this.socket=socket;this.notifications=notifications;
+        this.clock=clock;this.mapper=mapper;this.mongo=mongo;this.approvalLocks=approvalLocks;this.socket=socket;this.notifications=notifications;this.mailOutbox=mailOutbox;
     }
 
     public List<BookingResponse> mine(User user){
@@ -86,6 +88,7 @@ public class BookingService {
         addHistory(b,actor,BookingAction.CREATED,"Booking request created");
         notifications.notifyBookingManagersExcept(actor.getId(),NotificationType.BOOKING_CREATED,"New booking request",
                 actor.getFullName()+" requested "+room.getName()+" · "+b.getTitle(),"BOOKING",b.getId(),"/approvals");
+        mailOutbox.bookingCreated(b);
         socket.publish("BOOKING_CHANGED");
         return mapper.booking(b);
     }
@@ -163,6 +166,7 @@ public class BookingService {
                     "Your booking "+b.getTitle()+" at "+room.getName()+" was approved.","BOOKING",b.getId(),"/my-bookings");
             notifications.notifyBookingManagersExcept(admin.getId(),NotificationType.BOOKING_APPROVED,"Booking approved",
                     admin.getFullName()+" approved "+room.getName()+" · "+b.getTitle(),"BOOKING",b.getId(),"/approvals");
+            mailOutbox.bookingApproved(b,admin);
             socket.publish("BOOKING_CHANGED");
             return mapper.booking(b);
         }finally{
@@ -185,6 +189,7 @@ public class BookingService {
                 "Your booking "+b.getTitle()+" at "+rejectedRoom.getName()+" was rejected. Reason: "+reason.trim(),"BOOKING",b.getId(),"/my-bookings");
         notifications.notifyBookingManagersExcept(admin.getId(),NotificationType.BOOKING_REJECTED,"Booking rejected",
                 admin.getFullName()+" rejected "+rejectedRoom.getName()+" · "+b.getTitle(),"BOOKING",b.getId(),"/approvals");
+        mailOutbox.bookingRejected(b,admin);
         socket.publish("BOOKING_CHANGED");
         return mapper.booking(b);
     }
@@ -218,6 +223,7 @@ public class BookingService {
             notifications.notifyBookingManagersExcept(actor.getId(),NotificationType.BOOKING_CANCELLED,"Booking cancelled",
                     actor.getFullName()+" cancelled "+cancelledRoom.getName()+" · "+b.getTitle(),"BOOKING",b.getId(),"/approvals");
         }
+        mailOutbox.bookingCancelled(b,actor);
         socket.publish("BOOKING_CHANGED");
         return mapper.booking(b);
     }

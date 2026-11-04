@@ -17,6 +17,9 @@ public class MeetingRoom {
     private String description;
     private String amenities;
     private List<String> equipmentIds=new ArrayList<>();
+    // Email configuration is independent of room create/edit payloads.
+    private String mailSenderId;
+    private List<String> assignedMailManagerIds = new ArrayList<>();
     private RoomStatus status=RoomStatus.AVAILABLE;
     @CreatedDate private LocalDateTime createdAt;
     @LastModifiedDate private LocalDateTime updatedAt;
@@ -30,6 +33,9 @@ public class MeetingRoom {
     public String getDescription(){return description;} public void setDescription(String v){description=v;}
     public String getAmenities(){return amenities;} public void setAmenities(String v){amenities=v;}
     public List<String> getEquipmentIds(){return equipmentIds==null?List.of():equipmentIds;} public void setEquipmentIds(List<String> v){equipmentIds=v==null?new ArrayList<>():new ArrayList<>(v);}
+    public String getMailSenderId(){return mailSenderId;} public void setMailSenderId(String id){mailSenderId=id;}
+    public List<String> getAssignedMailManagerIds(){return assignedMailManagerIds==null?List.of():assignedMailManagerIds;}
+    public void setAssignedMailManagerIds(List<String> ids){assignedMailManagerIds=ids==null?new ArrayList<>():new ArrayList<>(ids);}
     public RoomStatus getStatus(){return status;} public void setStatus(RoomStatus v){status=v;}
     public LocalDateTime getCreatedAt(){return createdAt;} public LocalDateTime getUpdatedAt(){return updatedAt;}
     public Long getVersion(){return version;}

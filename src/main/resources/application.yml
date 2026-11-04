@@ -41,6 +41,26 @@ app:
     kdc: ${KERBEROS_KDC:VN-DC2.youngonevn.com}
     ldap-qop: ${KERBEROS_LDAP_QOP:auth}
     debug: ${KERBEROS_DEBUG:false}
+  mail:
+    tls:
+      # Reuse LDAPS trust (JVM + Windows ROOT + configured certificate files) for
+      # SMTP STARTTLS and direct SSL. No trust-all; hostname verification stays on.
+      # If the SMTP issuer isn't covered by these CAs, ask IT to supply it via
+      # LDAP_TRUST_CERTIFICATE_LOCATIONS (or a verified JVM truststore).
+      use-domain-trust: ${MAIL_TLS_USE_DOMAIN_TRUST:true}
+    # Optional external key protecting SMTP credentials. If blank, a private key is
+    # generated once at ~/.meeting-room-booking/smtp-credentials.key; BACK UP that file.
+    # Verified company SMTP: pop3.youngonevn.com:30475 with STARTTLS + AUTH.
+    # Override with MAIL_SMTP_HOST, MAIL_SMTP_PORT, MAIL_SMTP_SECURITY (STARTTLS/SSL_TLS).
+    # Never allow plaintext SMTP credentials; verify TLS support with IT.
+    # An APPROVED email contains a real RFC 5545 Outlook meeting request.
+    # CANCELLED after approval sends the corresponding calendar cancellation.
+    # The requester receives the invitation. Attendee email addresses are not
+    # collected by the current booking model (only attendeeCount).
+    credentials-key: ${MAIL_CREDENTIALS_KEY:}
+    # Fallback only; Admin can save Website URL in Email Management > SMTP Settings.
+    base-url: ${MAIL_APP_URL:}
+    poll-interval-ms: ${MAIL_POLL_INTERVAL_MS:10000}
   booking:
     business-start: "07:00"
     business-end: "18:00"

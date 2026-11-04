@@ -5,6 +5,7 @@ import org.bsl.meetingroom.config.BookingRulesProperties;
 import org.bsl.meetingroom.dto.Dtos.BookingRequest;
 import org.bsl.meetingroom.exception.AppException;
 import org.bsl.meetingroom.model.*;
+import org.bsl.meetingroom.mail.MailOutboxService;
 import org.bsl.meetingroom.repository.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -27,8 +28,9 @@ class ApprovedBookingPermissionTest {
     private final AppSocketPublisher socket=mock(AppSocketPublisher.class);
     private final NotificationService notifications=mock(NotificationService.class);
     private final MongoTemplate mongo=mock(MongoTemplate.class);
+    private final MailOutboxService mailOutbox=mock(MailOutboxService.class);
     private final Clock clock=Clock.fixed(Instant.parse("2026-10-26T03:00:00Z"), ZoneId.of("Asia/Ho_Chi_Minh"));
-    private final BookingService service=new BookingService(bookings,rooms,users,history,rules,clock,mapper,locks,socket,notifications,mongo);
+    private final BookingService service=new BookingService(bookings,rooms,users,history,rules,clock,mapper,locks,socket,notifications,mongo,mailOutbox);
 
     private User actor(String id,Role role){
         User user=new User();user.setId(id);user.setFullName(id);user.setRole(role);return user;
