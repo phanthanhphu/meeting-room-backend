@@ -131,7 +131,7 @@ public final class BookingMailTemplates {
         String location=safe(room==null?null:room.getLocation());
         return "<table role='presentation' width='100%' cellspacing='0' cellpadding='0' border='0' style='width:100%;border-collapse:collapse;border:1px solid #E1E9F0;'>"+
                 "<tr><td colspan='2' bgcolor='#F6F9FC' style='padding:17px 18px 15px;background:#F6F9FC;'>"+
-                part("detailsTitle","<div style='color:#64748B;font-size:11px;letter-spacing:0.7px;font-weight:700;text-transform:uppercase;margin-bottom:6px;'>Meeting</div>")+
+                part("detailsTitle","<div style='color:#64748B;font-size:11px;letter-spacing:0.7px;font-weight:700;margin-bottom:6px;'>Meeting</div>")+
                 part("meetingTitleValue","<div style='color:#173653;font-size:17px;font-weight:700;line-height:1.35;'>"+title+"</div>")+"</td></tr>"+
                 "<tr><td width='50%' valign='top' style='padding:15px 18px;border-top:1px solid #E1E9F0;border-right:1px solid #E1E9F0;'>"+
                 part("dateLabel","<div style='color:#64748B;font-size:11px;margin-bottom:5px;'>DATE</div>")+

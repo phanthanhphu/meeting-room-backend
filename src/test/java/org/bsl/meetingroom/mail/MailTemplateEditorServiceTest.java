@@ -132,4 +132,59 @@ class MailTemplateEditorServiceTest {
         assertEquals(32,captor.getValue().getFields().size());
         verify(repository,never()).deleteById(anyString());
     }
+    @Test void userSectionTitlePreservesEditorCapitalization(){
+        var fields=new LinkedHashMap<>(editor.getEditor("CREATED","USER","https://meeting.example.com").fields());
+        fields.put("detailsTitle","Subject");
+        var preview=editor.previewDraft("CREATED","USER",fields,"https://meeting.example.com");
+        assertTrue(preview.userHtml().contains(">Subject</div>"));
+        assertFalse(preview.userHtml().contains("text-transform:uppercase"));
+        fields.put("detailsTitle","SUBJECT");
+        var allCaps=editor.previewDraft("CREATED","USER",fields,"https://meeting.example.com");
+        assertTrue(allCaps.userHtml().contains(">SUBJECT</div>"));
+        fields.put("detailsTitle","Meeting Subject");
+        var mixed=editor.previewDraft("CREATED","USER",fields,"https://meeting.example.com");
+        assertTrue(mixed.userHtml().contains(">Meeting Subject</div>"));
+    }
+    @Test void savedDefaultCaseWinsOverHardcodedHtmlEvenWhenNothingCustomized(){
+        var fields=editor.getEditor("CREATED","USER","https://meeting.example.com").fields();
+        // The source template may have uppercase labels; the DB text must be authoritative.
+        var saved=new LinkedHashMap<>(fields);
+        saved.put("dateLabel","Date");
+        saved.put("timeLabel","Time");
+        when(repository.findById("CREATED_USER"))
+            .thenReturn(Optional.of(new MailTemplateCustomization("CREATED_USER",saved)));
+        Booking b=booking();MeetingRoom r=room();
+        var original=BookingMailTemplates.pendingConfirmation(b,r,null,"https://meeting.example.com/bookings/1");
+        assertTrue(original.html().contains(">DATE</div>"));
+        var delivered=editor.apply("CREATED","USER",original,b,r,null,null,
+            "https://meeting.example.com/bookings/1","https://meeting.example.com");
+        assertTrue(delivered.html().contains(">Date</div>"));
+        assertTrue(delivered.html().contains(">Time</div>"));
+        assertFalse(delivered.html().contains(">DATE</div>"));
+        assertFalse(delivered.html().contains(">TIME</div>"));
+        // Original colors, booking value and email subject remain correct.
+        assertTrue(delivered.html().contains("#B45309"));
+        assertTrue(delivered.html().contains("Team &lt;Sync&gt;"));
+        assertTrue(delivered.subject().contains("Team <Sync>"));
+    }
+    @Test void previewAndDeliveryRenderExactSavedTitleCaseNotOnlyChanges(){
+        var fields=new LinkedHashMap<>(editor.getEditor("CREATED","USER","https://meeting.example.com").fields());
+        fields.put("detailsTitle","Subject");
+        fields.put("dateLabel","Meeting Date");
+        fields.put("timeLabel","tImE");
+        fields.put("locationLabel","Location Name");
+        fields.put("locationValue","At {location}");
+        when(repository.findById("CREATED_USER"))
+            .thenReturn(Optional.of(new MailTemplateCustomization("CREATED_USER",saved)));
+        var preview=editor.preview("CREATED","https://meeting.example.com");
+        assertTrue(preview.userHtml().contains(">Subject</div>"));
+        assertTrue(preview.userHtml().contains(">Meeting Date</div>"));
+        assertTrue(preview.userHtml().contains(">tImE</div>"));
+        assertTrue(preview.userHtml().contains("Location Name"));
+        assertTrue(preview.userHtml().contains("At Building A - Floor 2"));
+        // Compare with the saved fields: the backend must not uppercase any label.
+        assertFalse(preview.userHtml().contains(">SUBJECT</div>"));
+        assertFalse(preview.userHtml().contains(">TIME</div>"));
+    }
+
 }

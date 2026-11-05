@@ -139,7 +139,7 @@ public class MailTemplateEditorService {
             case "brandTitle" -> "font-size:15px;font-weight:700;letter-spacing:0.3px;";
             case "brandSubtitle" -> "font-size:11px;color:#C8D9E8;margin-top:4px;";
             case "heading" -> "font-size:23px;line-height:1.25;font-weight:700;color:#153A5B;margin-bottom:12px;";
-            case "detailsTitle" -> "color:#64748B;font-size:11px;letter-spacing:0.7px;font-weight:700;text-transform:uppercase;margin-bottom:6px;";
+            case "detailsTitle" -> "color:#64748B;font-size:11px;letter-spacing:0.7px;font-weight:700;margin-bottom:6px;";
             default -> "";
         };
         if(!style.isEmpty())return "<div style='"+style+"'>"+plain(text)+"</div>";
@@ -208,12 +208,11 @@ public class MailTemplateEditorService {
         if(stored.isEmpty())return original; // safe before initial seeding completes
         Map<String,String> defaults=defaultFields(ev,aud);
         Map<String,String> fullFields=withDefaults(defaults,stored.get().getFields());
-        // Compare against the exact defaults before rendering: unchanged DB values must not
-        // reformat or replace the dynamically generated email HTML from BookingMailTemplates.
-        Map<String,String> changes=onlyChanged(fullFields,defaults);
-        if(changes.isEmpty())return original;
+        // Render from the saved fields, not a diff against Java defaults. Even fields that
+        // match defaults in MongoDB must win over hard-coded source text (e.g. the DB value
+        // "Date" must not be replaced by the original HTML literal "DATE").
         Map<String,String> values=tokens(b,room,requester,actor,defaultLink,websiteUrl,ev);
-        return applyFields(original,changes,values,defaultButtonLabel(ev,aud));
+        return applyFields(original,fullFields,values,defaultButtonLabel(ev,aud));
     }
     private static BookingMailTemplates.Content applyFields(BookingMailTemplates.Content source,Map<String,String> config,
                                                             Map<String,String> vars,String defaultButtonText){
@@ -222,6 +221,11 @@ public class MailTemplateEditorService {
         for(String part:List.of("brandTitle","brandSubtitle","heading","statusLabel","greeting","intro","detailsTitle","outro","footer")){
             if(!config.containsKey(part))continue;
             String text=interpolate(config.get(part),vars,false);
+            // Preserve exact source markup when its visible content already matches the
+            // configured value, but never compare against a second hard-coded default.
+            // In particular, preserve inline rich text and Outlook-specific structure.
+            String original=raw(html,part);
+            if(text.equals(extract(html,part)))continue;
             // The badge is a special section: an empty label removes the badge entirely.
             if(part.equals("statusLabel")){
                 // Preserve the original event color (green APPROVED, red REJECTED, etc.).
@@ -229,6 +233,8 @@ public class MailTemplateEditorService {
                 html=replace(html,part,text.isBlank()?"":
                         originalBadge.replace(BookingMailTemplates.safe(originalText),plain(text)));
             }
+            else if(part.equals("detailsTitle"))
+                html=replace(html,part,detailMarkup(original,text));
             else html=replace(html,part,tag(part,text));
         }
         for(String part:DETAIL_FIELDS){
@@ -236,7 +242,8 @@ public class MailTemplateEditorService {
             String old=raw(html,part);
             if(old.isEmpty())continue; // e.g. Processed By is absent for a newly created booking.
             String value=interpolate(config.get(part),vars,false);
-            html=replace(html,part,detailMarkup(old,value));
+            if(!value.equals(extract(html,part)))
+                html=replace(html,part,detailMarkup(old,value));
         }
         // If Location content is explicitly cleared, hide the entire row (no empty spacing).
         if(config.containsKey("locationValue") && interpolate(config.get("locationValue"),vars,false).isBlank())
@@ -334,11 +341,11 @@ public class MailTemplateEditorService {
         PreviewSample sample=sample(ev,site);
         String url=Objects.toString(site,"");
         BookingMailTemplates.Content user=aud.equals("USER")?
-            applyFields(sample.user(),onlyChanged(fields,sample.user(),ev,aud),tokens(sample.booking(),sample.room(),sample.requester(),sample.manager(),
+            applyFields(sample.user(),fields,tokens(sample.booking(),sample.room(),sample.requester(),sample.manager(),
                 sample.userUrl(),url,ev),defaultButtonLabel(ev,aud)):
             apply(ev,"USER",sample.user(),sample.booking(),sample.room(),sample.requester(),sample.manager(),sample.userUrl(),url);
         BookingMailTemplates.Content admin=aud.equals("ADMIN")?
-            applyFields(sample.admin(),onlyChanged(fields,sample.admin(),ev,aud),tokens(sample.booking(),sample.room(),sample.requester(),sample.manager(),
+            applyFields(sample.admin(),fields,tokens(sample.booking(),sample.room(),sample.requester(),sample.manager(),
                 sample.adminUrl(),url,ev),defaultButtonLabel(ev,aud)):
             apply(ev,"ADMIN",sample.admin(),sample.booking(),sample.room(),sample.requester(),sample.manager(),sample.adminUrl(),url);
         String icon="data:image/png;base64,"+Base64.getEncoder().encodeToString(BookingMailTemplates.brandIconBytes());
