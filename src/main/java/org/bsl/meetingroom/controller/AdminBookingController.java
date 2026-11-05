@@ -31,5 +31,5 @@ public class AdminBookingController {
     @PatchMapping("/{id}/approve") @PreAuthorize("hasAnyRole('ROOM_MANAGER','ADMIN')") public BookingResponse approve(@PathVariable String id){return service.approve(id,auth.current());}
     @PatchMapping("/{id}/reject") @PreAuthorize("hasAnyRole('ROOM_MANAGER','ADMIN')") public BookingResponse reject(@PathVariable String id,@Valid @RequestBody RejectRequest req){return service.reject(id,req.reason(),auth.current());}
     @PatchMapping("/{id}/cancel") @PreAuthorize("hasAnyRole('ROOM_MANAGER','ADMIN')") public BookingResponse cancel(@PathVariable String id){return service.cancel(id,auth.current());}
-    @DeleteMapping("/{id}") @PreAuthorize("hasAnyRole('ROOM_MANAGER','ADMIN')") public void delete(@PathVariable String id){service.delete(id,auth.current());}
+    @DeleteMapping("/{id}") @PreAuthorize("hasRole('ADMIN')") public void delete(@PathVariable String id){service.delete(id,auth.current());}
 }

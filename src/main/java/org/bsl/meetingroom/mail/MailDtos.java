@@ -37,6 +37,9 @@ public final class MailDtos {
     public record NotificationRulesRequest(@NotNull Boolean pending, @NotNull Boolean approved,
                                            @NotNull Boolean rejected, @NotNull Boolean cancelled) {}
     public record NotificationRulesResponse(boolean pending,boolean approved,boolean rejected,boolean cancelled) {}
+    public record TemplateEditorRequest(@NotNull java.util.Map<String,String> fields) {}
+    public record TemplateEditorResponse(String eventType,String audience,boolean customized,
+            java.util.Map<String,String> fields,java.util.Map<String,String> defaults) {}
     public record TemplatePreviewResponse(String eventType,String userSubject,String userHtml,
                                           String adminSubject,String adminHtml) {}
 }

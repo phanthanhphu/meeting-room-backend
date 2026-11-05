@@ -19,14 +19,16 @@ public class AdminMailController {
     @org.springframework.beans.factory.annotation.Value("${app.mail.base-url:}")
     private String appUrlFallback;
     private final MailConfigService config;
+    private final org.bsl.meetingroom.mail.MailTemplateEditorService templateEditor;
     private final MailOutboxService outbox;
     private final AuthService auth;
     private final MailDeliveryJob deliveryJob;
     private final MailOutboxRepository mailRepository;
     public AdminMailController(MailConfigService config,MailOutboxService outbox,AuthService auth,
-                               MailDeliveryJob deliveryJob,MailOutboxRepository mailRepository){
+                               MailDeliveryJob deliveryJob,MailOutboxRepository mailRepository,
+                               org.bsl.meetingroom.mail.MailTemplateEditorService templateEditor){
         this.config=config;this.outbox=outbox;this.auth=auth;
-        this.deliveryJob=deliveryJob;this.mailRepository=mailRepository;
+        this.deliveryJob=deliveryJob;this.mailRepository=mailRepository;this.templateEditor=templateEditor;
     }
     @GetMapping("/status") public MailRuntimeStatus status(){
         return new MailRuntimeStatus(config.isMailEnabled(),config.isSmtpConfigured(),config.isEncryptionReady(),
@@ -74,7 +76,25 @@ public class AdminMailController {
     @PutMapping("/notification-rules") public NotificationRulesResponse updateNotificationRules(
             @Valid @RequestBody NotificationRulesRequest req){return config.updateNotificationRules(req);}
     @GetMapping("/templates/{event}") public TemplatePreviewResponse template(@PathVariable String event){
-        return org.bsl.meetingroom.mail.BookingMailTemplates.preview(event,config.bookingWebsiteUrl(appUrlFallback));
+        return templateEditor.preview(event,config.bookingWebsiteUrl(appUrlFallback));
+    }
+    @GetMapping("/templates/{event}/editor/{audience}")
+    public TemplateEditorResponse getTemplateEditor(@PathVariable String event,@PathVariable String audience){
+        return templateEditor.getEditor(event,audience,config.bookingWebsiteUrl(appUrlFallback));
+    }
+    @PutMapping("/templates/{event}/editor/{audience}")
+    public TemplateEditorResponse saveTemplateEditor(@PathVariable String event,@PathVariable String audience,
+            @Valid @RequestBody TemplateEditorRequest req){
+        return templateEditor.save(event,audience,req.fields(),config.bookingWebsiteUrl(appUrlFallback));
+    }
+    @PostMapping("/templates/{event}/preview/{audience}")
+    public TemplatePreviewResponse previewDraft(@PathVariable String event,@PathVariable String audience,
+            @Valid @RequestBody TemplateEditorRequest req){
+        return templateEditor.previewDraft(event,audience,req.fields(),config.bookingWebsiteUrl(appUrlFallback));
+    }
+    @DeleteMapping("/templates/{event}/editor/{audience}")
+    public void resetTemplateEditor(@PathVariable String event,@PathVariable String audience){
+        templateEditor.reset(event,audience);
     }
     @PostMapping("/outbox/process") public ProcessNowResponse processNow(){
         int count=deliveryJob.processPendingNow();

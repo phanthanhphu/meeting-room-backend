@@ -19,7 +19,7 @@ public class BookingController {
     @GetMapping("/{id}") public BookingResponse get(@PathVariable String id){return service.get(id,auth.current());}
     @PutMapping("/{id}") @PreAuthorize("hasAnyRole('USER','ROOM_MANAGER','ADMIN')") public BookingResponse update(@PathVariable String id,@Valid @RequestBody BookingRequest req){return service.update(id,req,auth.current());}
     @PatchMapping("/{id}/cancel") @PreAuthorize("hasAnyRole('USER','ROOM_MANAGER','ADMIN')") public BookingResponse cancel(@PathVariable String id){return service.cancel(id,auth.current());}
-    @DeleteMapping("/{id}") @PreAuthorize("hasAnyRole('USER','ROOM_MANAGER','ADMIN')") public void delete(@PathVariable String id){service.delete(id,auth.current());}
+    @DeleteMapping("/{id}") @PreAuthorize("hasRole('ADMIN')") public void delete(@PathVariable String id){service.delete(id,auth.current());}
     @GetMapping("/{id}/history") public List<HistoryResponse> history(@PathVariable String id){return service.history(id,auth.current());}
     @GetMapping("/calendar/range") public List<BookingResponse> calendar(
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,

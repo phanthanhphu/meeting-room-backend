@@ -17,16 +17,23 @@ import java.util.*;
 public class MailOutboxService {
     private static final Logger log=LoggerFactory.getLogger(MailOutboxService.class);
     private final MailConfigService config;
+    private final MailTemplateEditorService templateEditor;
     private final MailOutboxRepository outbox;
     private final MeetingRoomRepository rooms;
     private final UserRepository users;
     private final Clock clock;
     private final String appUrl;
 
+    // Compatibility constructor for existing unit tests that directly create this service.
+    public MailOutboxService(MailConfigService config,MailOutboxRepository outbox,MeetingRoomRepository rooms,
+                             UserRepository users,Clock clock,String appUrl){
+        this(config,outbox,rooms,users,clock,appUrl,null);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
     public MailOutboxService(MailConfigService config,MailOutboxRepository outbox,MeetingRoomRepository rooms,
                              UserRepository users,Clock clock,
-                             @Value("${app.mail.base-url:}") String appUrl){
-        this.config=config;this.outbox=outbox;this.rooms=rooms;this.users=users;this.clock=clock;
+                             @Value("${app.mail.base-url:}") String appUrl,MailTemplateEditorService templateEditor){
+        this.config=config;this.outbox=outbox;this.rooms=rooms;this.users=users;this.clock=clock;this.templateEditor=templateEditor;
         // Only explicitly configured HTTP(S) destinations are included in emails.
         this.appUrl=appUrl!=null && appUrl.matches("(?i)^https?://[^\\s<>]+$")?appUrl.replaceAll("/+$",""):"";
     }
@@ -40,12 +47,21 @@ public class MailOutboxService {
             // Equal addresses intentionally get both role-specific versions, not a shared CC.
             String owner=b.getCreatedByEmail()!=null && !b.getCreatedByEmail().isBlank() ?
                     b.getCreatedByEmail() : (requester!=null?requester.getEmail():null);
+            String userUrl=link("/my-bookings",b.getId()),adminUrl=link("/approvals",b.getId());
             enqueue("booking:"+b.getId()+":pending:user",b.getId(),"PENDING",from.get(),owner,
-                    BookingMailTemplates.pendingConfirmation(b,room,requester,link("/my-bookings",b.getId())));
+                    personalized("CREATED","USER",BookingMailTemplates.pendingConfirmation(b,room,requester,userUrl),
+                            b,room,requester,null,userUrl));
             notifyAdmins(b,room,from.get(),"CREATED",
-                    BookingMailTemplates.created(b,room,requester,link("/approvals",b.getId())));
+                    personalized("CREATED","ADMIN",BookingMailTemplates.created(b,room,requester,adminUrl),
+                            b,room,requester,null,adminUrl));
 
         });
+    }
+    private BookingMailTemplates.Content personalized(String event,String audience,BookingMailTemplates.Content original,
+            Booking b,MeetingRoom room,User requester,User actor,String originalLink){
+        if(templateEditor==null)return original;
+        return templateEditor.apply(event,audience,original,b,room,requester,actor,originalLink,
+                config.bookingWebsiteUrl(appUrl));
     }
     private static void addRecipient(Map<String,String> recipients,String email){
         if(email==null)return;
@@ -89,12 +105,14 @@ public class MailOutboxService {
                     BookingMailTemplates.rejected(b,room,requester,admin,link("/my-bookings",b.getId()));
             String calendar = "APPROVED".equals(type) && email != null ?
                     OutlookCalendarInvite.build(b,room,from.get().getEmail(),email,false,clock,link("/my-bookings",b.getId())) : null;
+            template=personalized(type,"USER",template,b,room,requester,admin,link("/my-bookings",b.getId()));
             enqueue("booking:"+b.getId()+":"+type.toLowerCase(Locale.ROOT)+":user",b.getId(),type,from.get(),email,template,
                     calendar==null?null:"REQUEST",calendar);
             BookingMailTemplates.Content adminTemplate="APPROVED".equals(type)?
                     BookingMailTemplates.adminApproved(b,room,requester,admin,link("/approvals",b.getId())):
                     BookingMailTemplates.adminRejected(b,room,requester,admin,link("/approvals",b.getId()));
-            notifyAdmins(b,room,from.get(),type,adminTemplate);
+            notifyAdmins(b,room,from.get(),type,personalized(type,"ADMIN",adminTemplate,b,room,requester,admin,
+                    link("/approvals",b.getId())));
         });
     }
     public void bookingCancelled(Booking b,User actor){
@@ -110,11 +128,14 @@ public class MailOutboxService {
             boolean hadInvitation=b.getApprovedAt()!=null;
             String calendar=hadInvitation && ownerEmail!=null ? OutlookCalendarInvite.build(b,room,
                     sender.get().getEmail(),ownerEmail,true,clock,link("/my-bookings",b.getId())) : null;
+            ownerTemplate=personalized("CANCELLED","USER",ownerTemplate,b,room,requester,actor,
+                    link("/my-bookings",b.getId()));
             enqueue("booking:"+b.getId()+":cancelled:user",b.getId(),"CANCELLED",sender.get(),ownerEmail,
                     ownerTemplate,calendar==null?null:"CANCEL",calendar);
             // Admin notification contains a management-oriented message, never Outlook REQUEST/CANCEL.
             notifyAdmins(b,room,sender.get(),"CANCELLED",
-                    BookingMailTemplates.adminCancelled(b,room,requester,actor,link("/approvals",b.getId())));
+                    personalized("CANCELLED","ADMIN",BookingMailTemplates.adminCancelled(b,room,requester,actor,
+                            link("/approvals",b.getId())),b,room,requester,actor,link("/approvals",b.getId())));
         });
     }
     private void safely(Runnable action){

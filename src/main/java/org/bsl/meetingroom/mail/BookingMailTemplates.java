@@ -28,7 +28,7 @@ public final class BookingMailTemplates {
     }
 
     /** Inline data URI is ONLY for the browser preview; actual email uses CID. */
-    private static String browserPreviewHtml(String html, String iconDataUri) {
+    public static String browserPreviewHtml(String html, String iconDataUri) {
         return html.replace("cid:" + BRAND_ICON_CID, iconDataUri);
     }
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy",Locale.ENGLISH);
@@ -63,7 +63,7 @@ public final class BookingMailTemplates {
         String name=requester==null?b.getCreatedByAccount():requester.getFullName();
         return new Content(subject("[Meeting Room Admin] Rejected booking - ",b),wrap("BOOKING ADMIN NOTIFICATION","REJECTED","#B91C1C",
                 "Dear Room Manager,","A booking request has been rejected and the requester has been notified.",
-                details(b,room,name,manager, tr("Rejection reason",b.getAdminNote())),"This message is for administrative tracking.",url,"View Booking"));
+                details(b,room,name,manager, tr("rejectionReason","Rejection reason",b.getAdminNote())),"This message is for administrative tracking.",url,"View Booking"));
     }
     public static Content adminCancelled(Booking b,MeetingRoom room,User requester,User actor,String url){
         String name=requester==null?b.getCreatedByAccount():requester.getFullName();
@@ -106,7 +106,8 @@ public final class BookingMailTemplates {
     public static Content rejected(Booking b,MeetingRoom room,User requester,User manager,String url){
         String name=requester==null?b.getCreatedByAccount():requester.getFullName();
         String reason="<tr><td colspan='2' style='padding:13px;background:#FFF2F2;border:1px solid #F4CACA;border-radius:6px;'>"+
-                "<strong style='color:#B91C1C;'>Reason for rejection</strong><br>"+safe(b.getAdminNote())+"</td></tr>";
+                "<strong style='color:#B91C1C;'>"+part("rejectionReasonLabel","Reason for rejection")+"</strong><br>"+
+                part("rejectionReasonValue",safe(b.getAdminNote()))+"</td></tr>";
         return new Content(subject("[Meeting Room] Booking rejected - ",b),wrap("BOOKING STATUS","REJECTED","#B91C1C",
                 "Dear "+safe(name)+",","Your meeting room booking request has been <strong>rejected</strong>.",
                 userDetails(b,room,reason),"Please choose another available time slot or meeting room.",url,"View Booking Details"));
@@ -130,49 +131,54 @@ public final class BookingMailTemplates {
         String location=safe(room==null?null:room.getLocation());
         return "<table role='presentation' width='100%' cellspacing='0' cellpadding='0' border='0' style='width:100%;border-collapse:collapse;border:1px solid #E1E9F0;'>"+
                 "<tr><td colspan='2' bgcolor='#F6F9FC' style='padding:17px 18px 15px;background:#F6F9FC;'>"+
-                "<div style='color:#64748B;font-size:11px;letter-spacing:0.7px;font-weight:700;text-transform:uppercase;margin-bottom:6px;'>Meeting</div>"+
-                "<div style='color:#173653;font-size:17px;font-weight:700;line-height:1.35;'>"+title+"</div></td></tr>"+
+                part("detailsTitle","<div style='color:#64748B;font-size:11px;letter-spacing:0.7px;font-weight:700;text-transform:uppercase;margin-bottom:6px;'>Meeting</div>")+
+                part("meetingTitleValue","<div style='color:#173653;font-size:17px;font-weight:700;line-height:1.35;'>"+title+"</div>")+"</td></tr>"+
                 "<tr><td width='50%' valign='top' style='padding:15px 18px;border-top:1px solid #E1E9F0;border-right:1px solid #E1E9F0;'>"+
-                "<div style='color:#64748B;font-size:11px;margin-bottom:5px;'>DATE</div><div style='font-size:14px;font-weight:bold;color:#173653;'>"+date+"</div></td>"+
+                part("dateLabel","<div style='color:#64748B;font-size:11px;margin-bottom:5px;'>DATE</div>")+
+                part("dateValue","<div style='font-size:14px;font-weight:bold;color:#173653;'>"+date+"</div>")+"</td>"+
                 "<td width='50%' valign='top' style='padding:15px 18px;border-top:1px solid #E1E9F0;'>"+
-                "<div style='color:#64748B;font-size:11px;margin-bottom:5px;'>TIME</div><div style='font-size:14px;font-weight:bold;color:#173653;'>"+time+"</div></td></tr>"+
+                part("timeLabel","<div style='color:#64748B;font-size:11px;margin-bottom:5px;'>TIME</div>")+
+                part("timeValue","<div style='font-size:14px;font-weight:bold;color:#173653;'>"+time+"</div>")+"</td></tr>"+
                 "<tr><td colspan='2' style='padding:13px 18px;border-top:1px solid #E1E9F0;font-size:13px;line-height:1.6;'>"+
-                "<span style='color:#64748B;'>Meeting Room</span><br><strong style='color:#173653;'>"+roomName+"</strong></td></tr>"+
-                (location.isBlank()?"":"<tr><td colspan='2' style='padding:13px 18px;border-top:1px solid #E1E9F0;font-size:13px;line-height:1.6;'>"+
-                 "<span style='color:#64748B;'>Location</span><br><strong style='color:#173653;'>"+location+"</strong></td></tr>")+
+                part("roomLabel","<div style='color:#64748B;'>Meeting Room</div>")+
+                part("roomValue","<strong style='color:#173653;'>"+roomName+"</strong>")+"</td></tr>"+
+                (location.isBlank()?"":part("locationRow","<tr><td colspan='2' style='padding:13px 18px;border-top:1px solid #E1E9F0;font-size:13px;line-height:1.6;'>"+
+                 part("locationLabel","<div style='color:#64748B;'>Location</div>")+
+                 part("locationValue","<strong style='color:#173653;'>"+location+"</strong>")+"</td></tr>"))+
                 extra+"</table>";
     }
     private static String details(Booking b,MeetingRoom room,String requester,User manager){return details(b,room,requester,manager,"");}
     private static String details(Booking b,MeetingRoom room,String requester,User manager,String extra){
         StringBuilder rows=new StringBuilder();
-        if(requester!=null) rows.append(tr("Requested By",requester));
-        rows.append(tr("Meeting Room",room.getName()));
-        rows.append(tr("Location",room.getLocation()));
-        rows.append(tr("Date",b.getStartAt().format(DATE)));
-        rows.append(tr("Time",b.getStartAt().format(TIME)+" - "+b.getEndAt().format(TIME)));
-        rows.append(tr("Meeting Title",b.getTitle()));
-        rows.append(tr("Purpose",b.getPurpose()));
-        rows.append(tr("Attendees",String.valueOf(b.getAttendeeCount())));
-        if(manager!=null) rows.append(tr("Processed By",manager.getFullName()));
+        if(requester!=null) rows.append(tr("requestedBy","Requested By",requester));
+        rows.append(tr("room","Meeting Room",room==null?null:room.getName()));
+        rows.append(tr("location","Location",room==null?null:room.getLocation()));
+        rows.append(tr("date","Date",b.getStartAt().format(DATE)));
+        rows.append(tr("time","Time",b.getStartAt().format(TIME)+" - "+b.getEndAt().format(TIME)));
+        rows.append(tr("meetingTitle","Meeting Title",b.getTitle()));
+        rows.append(tr("purpose","Purpose",b.getPurpose()));
+        rows.append(tr("attendees","Attendees",String.valueOf(b.getAttendeeCount())));
+        if(manager!=null) rows.append(tr("processedBy","Processed By",manager.getFullName()));
         rows.append(extra);
         return "<table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='width:100%;border-collapse:collapse;background:#F6F9FC;'>"+rows+"</table>";
     }
-    private static String tr(String label,String value){
-        return "<tr><td style='padding:10px 14px;color:#64748B;width:37%;font-size:13px;border-bottom:1px solid #E5EDF5;'>"+safe(label)+
-                "</td><td style='padding:10px 14px;color:#183A5B;font-weight:600;font-size:13px;border-bottom:1px solid #E5EDF5;overflow-wrap:anywhere;'>"+safe(value)+"</td></tr>";
+    private static String tr(String key,String label,String value){
+        return part(key+"Row","<tr><td style='padding:10px 14px;color:#64748B;width:37%;font-size:13px;border-bottom:1px solid #E5EDF5;'>"+
+                part(key+"Label",safe(label))+"</td><td style='padding:10px 14px;color:#183A5B;font-weight:600;font-size:13px;border-bottom:1px solid #E5EDF5;overflow-wrap:anywhere;'>"+
+                part(key+"Value",safe(value))+"</td></tr>");
+    }
+    public static String part(String name,String contents){return "<!--mail:"+name+"-->"+contents+"<!--/mail:"+name+"-->";}
+    public static String buttonHtml(String url,String button){
+        if(url==null || !url.matches("(?i)^https?://[^\\s<>]+$") || button==null || button.isBlank())return "";
+        String href=safe(url);String text=safe(button);
+        return "<table role='presentation' cellspacing='0' cellpadding='0' border='0' style='margin:22px 0 12px;border-collapse:collapse;'><tr><td align='left'>"+
+            "<!--[if mso]><v:roundrect xmlns:v='urn:schemas-microsoft-com:vml' xmlns:w='urn:schemas-microsoft-com:office:word' href='"+href+"' style='height:44px;v-text-anchor:middle;width:215px;' arcsize='10%' stroke='f' fillcolor='#155A95'><w:anchorlock/><center style='color:#FFFFFF;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;'>"+text+" &gt;</center></v:roundrect><![endif]-->"+
+            "<!--[if !mso]><!--><a href='"+href+"' target='_blank' style='background-color:#155A95;border:1px solid #155A95;border-radius:6px;color:#FFFFFF!important;display:inline-block;padding:13px 22px;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:18px;'>"+
+            "<span style='color:#FFFFFF!important;text-decoration:none;'>"+text+" &#8594;</span></a><!--<![endif]-->"+
+            "</td></tr></table>";
     }
     private static String wrap(String heading,String status,String color,String salutation,String intro,String details,String outro,String url,String button){
-        String link="";
-        if(url!=null && url.matches("(?i)^https?://[^\\s<>]+$")){
-            String href=safe(url);
-            String text=safe(button);
-            // VML button for classic Outlook on Windows; HTML anchor for all other clients.
-            link="<table role='presentation' cellspacing='0' cellpadding='0' border='0' style='margin:22px 0 12px;border-collapse:collapse;'><tr><td align='left'>"+
-                    "<!--[if mso]><v:roundrect xmlns:v='urn:schemas-microsoft-com:vml' xmlns:w='urn:schemas-microsoft-com:office:word' href='"+href+"' style='height:44px;v-text-anchor:middle;width:215px;' arcsize='10%' stroke='f' fillcolor='#155A95'><w:anchorlock/><center style='color:#FFFFFF;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;'>"+text+" &gt;</center></v:roundrect><![endif]-->"+
-                    "<!--[if !mso]><!--><a href='"+href+"' target='_blank' style='background-color:#155A95;border:1px solid #155A95;border-radius:6px;color:#FFFFFF!important;display:inline-block;padding:13px 22px;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:18px;'>"+
-                    "<span style='color:#FFFFFF!important;text-decoration:none;'>"+text+" &#8594;</span></a><!--<![endif]-->"+
-                    "</td></tr></table>";
-        }
+        String link=buttonHtml(url,button);
         String title=heading.substring(0,1).toUpperCase(Locale.ENGLISH)+heading.substring(1).toLowerCase(Locale.ENGLISH);
         return "<!doctype html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head>"+
                 "<body style='margin:0;padding:0;background-color:#F3F6FA;font-family:Arial,Helvetica,sans-serif;color:#27384A;'>"+
@@ -184,20 +190,20 @@ public final class BookingMailTemplates {
                 "<td width='39' height='39' bgcolor='#FFFFFF' align='center' valign='middle' style='width:39px;height:39px;background:#FFFFFF;border-radius:4px;'>"+
                 "<img src='cid:"+BRAND_ICON_CID+"' alt='Calendar' width='33' height='33' style='width:33px;height:33px;display:block;margin:0 auto;border:0;outline:none;text-decoration:none;'>"+
                 "</td>"+
-                "<td style='padding-left:12px;color:#FFFFFF;'><div style='font-size:15px;font-weight:700;letter-spacing:0.3px;'>Meeting Room Booking</div>"+
-                "<div style='font-size:11px;color:#C8D9E8;margin-top:4px;'>AUTOMATED NOTIFICATION</div></td></tr></table></td></tr>"+
+                "<td style='padding-left:12px;color:#FFFFFF;'>"+part("brandTitle","<div style='font-size:15px;font-weight:700;letter-spacing:0.3px;'>Meeting Room Booking</div>")+
+                part("brandSubtitle","<div style='font-size:11px;color:#C8D9E8;margin-top:4px;'>AUTOMATED NOTIFICATION</div>")+"</td></tr></table></td></tr>"+
                 "<tr><td style='padding:24px 27px 20px;'>"+
-                "<div style='font-size:23px;line-height:1.25;font-weight:700;color:#153A5B;margin-bottom:12px;'>"+safe(title)+"</div>"+
-                "<table role='presentation' cellspacing='0' cellpadding='0' border='0' width='100%' style='border-collapse:collapse;margin:0 0 20px;'>"+
-                "<tr><td align='center' valign='middle' bgcolor='#F8FAFD' style='padding:12px 14px;border-left:4px solid "+color+";background-color:#F8FAFD;color:"+color+";font-size:12px;font-weight:700;letter-spacing:0.2px;text-align:center;vertical-align:middle;'>"+safe(status)+"</td></tr></table>"+
-                "<p style='margin:0 0 11px;font-size:14px;line-height:1.5;color:#27384A;'>"+salutation+"</p>"+
-                "<p style='margin:0 0 21px;font-size:14px;line-height:1.65;color:#27384A;'>"+intro+"</p>"+
+                part("heading","<div style='font-size:23px;line-height:1.25;font-weight:700;color:#153A5B;margin-bottom:12px;'>"+safe(title)+"</div>")+
+                part("statusLabel","<table role='presentation' cellspacing='0' cellpadding='0' border='0' width='100%' style='border-collapse:collapse;margin:0 0 20px;'>"+
+                "<tr><td align='center' valign='middle' bgcolor='#F8FAFD' style='padding:12px 14px;border-left:4px solid "+color+";background-color:#F8FAFD;color:"+color+";font-size:12px;font-weight:700;letter-spacing:0.2px;text-align:center;vertical-align:middle;'>"+safe(status)+"</td></tr></table>")+
+                part("greeting","<p style='margin:0 0 11px;font-size:14px;line-height:1.5;color:#27384A;'>"+salutation+"</p>")+
+                part("intro","<p style='margin:0 0 21px;font-size:14px;line-height:1.65;color:#27384A;'>"+intro+"</p>")+
                 details+
-                "<p style='margin:17px 0 0;font-size:13px;line-height:1.6;color:#526578;'>"+safe(outro)+"</p>"+
-                link+"</td></tr>"+
-                "<tr><td bgcolor='#F8FAFC' style='padding:15px 24px;text-align:center;border-top:1px solid #E7EDF3;background:#F8FAFC;'>"+
-                "<p style='margin:0;font-size:11px;color:#8493A7;line-height:1.6;'>This is an automated message from Meeting Room Booking.<br>Please do not reply to this email.</p>"+
-                "</td></tr></table></td></tr></table></body></html>";
+                part("outro","<p style='margin:17px 0 0;font-size:13px;line-height:1.6;color:#526578;'>"+safe(outro)+"</p>")+
+                part("button",link)+"</td></tr>"+
+                part("footer","<tr><td bgcolor='#F8FAFC' style='padding:15px 24px;text-align:center;border-top:1px solid #E7EDF3;background:#F8FAFC;'>"+
+                    "<p style='margin:0;font-size:11px;color:#8493A7;line-height:1.6;'>This is an automated message from Meeting Room Booking.<br>Please do not reply to this email.</p></td></tr>")+
+                "</table></td></tr></table></body></html>";
     }
     public static String safe(String value){
         if(value==null)return "";

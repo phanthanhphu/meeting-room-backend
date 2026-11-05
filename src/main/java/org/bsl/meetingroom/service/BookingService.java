@@ -229,23 +229,39 @@ public class BookingService {
     }
 
     public void delete(String id,User actor){
+        requireBookingDeletionAdmin(actor);
+        Booking initial=find(id);
+        // Serialize with the requester's create/update/approve/cancel operations.
+        // Re-read and re-check ADMIN permission after obtaining the lock.
+        withUserBookingLock(initial.getCreatedById(), () -> {
+            deleteLocked(id,actor);
+            return null;
+        });
+    }
+    private void deleteLocked(String id,User actor){
+        requireBookingDeletionAdmin(actor);
         Booking b=find(id);
-        authorizeOwnerOrAdmin(b,actor);
-        if(b.getStatus()!=BookingStatus.REJECTED && b.getStatus()!=BookingStatus.CANCELLED)
-            throw AppException.badRequest("CANNOT_DELETE","Only REJECTED or CANCELLED bookings can be deleted.");
         MeetingRoom deletedRoom=findRoom(b.getRoomId());
         String ownerId=b.getCreatedById();
         String title=b.getTitle();
+        // ADMIN only. Delete the booking and its per-booking history for every status.
         history.deleteByBookingId(id);
         bookings.delete(b);
-        if(actor.getRole().canManageBookings() && !Objects.equals(actor.getId(),ownerId)){
-            notifications.notifyUser(ownerId,NotificationType.BOOKING_DELETED,"Booking removed by Manager",
+        // Deletion is intentionally silent for email: do not queue messages or Outlook ICS.
+        // Cancellation is a separate action and retains its existing email behaviour.
+        if(!Objects.equals(actor.getId(),ownerId)){
+            notifications.notifyUser(ownerId,NotificationType.BOOKING_DELETED,"Booking removed by Admin",
                     "Your booking "+title+" at "+deletedRoom.getName()+" was removed.","BOOKING",id,"/my-bookings");
         } else {
             notifications.notifyBookingManagersExcept(actor.getId(),NotificationType.BOOKING_DELETED,"Booking removed",
                     actor.getFullName()+" removed "+deletedRoom.getName()+" · "+title,"BOOKING",id,"/approvals");
         }
         socket.publish("BOOKING_CHANGED");
+    }
+
+    private void requireBookingDeletionAdmin(User actor){
+        if(actor==null || actor.getRole()!=Role.ADMIN)
+            throw AppException.forbidden("Only ADMIN may permanently delete bookings.");
     }
 
     public List<BookingResponse> calendar(LocalDate from,LocalDate to,User actor){
