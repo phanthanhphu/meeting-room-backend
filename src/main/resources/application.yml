@@ -65,5 +65,5 @@ app:
     business-start: "07:00"
     business-end: "18:00"
     min-duration-minutes: 15
-    max-duration-minutes: 240
+    max-duration-minutes: 660
     max-advance-days: 90

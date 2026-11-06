@@ -19,7 +19,7 @@ public class ResponseMapper {
                 u.getAccountSource()==null?AccountSource.SYSTEM:u.getAccountSource(),u.getRole(),u.isEnabled());
     }
     public static RoomResponse room(MeetingRoom r){
-        return new RoomResponse(r.getId(),r.getCode(),r.getName(),r.getLocation(),r.getCapacity(),r.getDescription(),r.getAmenities(),r.getStatus(),r.getEquipmentIds());
+        return new RoomResponse(r.getId(),r.getCode(),r.getName(),r.getColor(),r.getLocation(),r.getCapacity(),r.getDescription(),r.getAmenities(),r.getStatus(),r.getEquipmentIds());
     }
     /** Resolve unique room/user IDs once for each booking list, preserving response fields. */
     public List<BookingResponse> bookings(List<Booking> rows) {

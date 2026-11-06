@@ -135,12 +135,12 @@ public class AuthService {
     public User current() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null) {
-            throw new AppException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Chưa đăng nhập");
+            throw new AppException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "You are not signed in.");
         }
         User user = users.findByUsernameIgnoreCase(auth.getName())
-                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Tài khoản không tồn tại"));
+                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Account not found."));
         if (!user.isEnabled()) {
-            throw new AppException(HttpStatus.UNAUTHORIZED, "ACCOUNT_DISABLED", "Tài khoản đã bị khóa");
+            throw new AppException(HttpStatus.UNAUTHORIZED, "ACCOUNT_DISABLED", "This account has been disabled.");
         }
         return user;
     }

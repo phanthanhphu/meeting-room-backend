@@ -23,11 +23,11 @@ public class EquipmentService {
     }
     public List<EquipmentResponse> list(){return equipment.findAllByOrderByNameAsc().stream().map(EquipmentService::response).toList();}
     public EquipmentResponse get(String id){return response(find(id));}
-    private Equipment find(String id){return equipment.findById(id).orElseThrow(()->AppException.notFound("Không tìm thấy thiết bị"));}
+    private Equipment find(String id){return equipment.findById(id).orElseThrow(()->AppException.notFound("Equipment not found."));}
 
     public EquipmentResponse create(EquipmentRequest req){
         String code=req.code().trim().toUpperCase(Locale.ROOT);
-        if(equipment.existsByCodeIgnoreCase(code))throw AppException.conflict("EQUIPMENT_CODE_EXISTS","Mã thiết bị đã tồn tại");
+        if(equipment.existsByCodeIgnoreCase(code))throw AppException.conflict("EQUIPMENT_CODE_EXISTS","This equipment code already exists.");
         Equipment item=new Equipment();apply(item,req);EquipmentResponse saved=response(equipment.save(item));
         socket.publish("EQUIPMENT_CHANGED");return saved;
     }
@@ -35,21 +35,21 @@ public class EquipmentService {
         Equipment item=find(id);
         String code=req.code().trim();
         if(!item.getCode().equalsIgnoreCase(code)&&equipment.existsByCodeIgnoreCase(code))
-            throw AppException.conflict("EQUIPMENT_CODE_EXISTS","Mã thiết bị đã tồn tại");
+            throw AppException.conflict("EQUIPMENT_CODE_EXISTS","This equipment code already exists.");
         if(req.status()==EquipmentStatus.INACTIVE && item.getStatus()!=EquipmentStatus.INACTIVE && isAssigned(id))
-            throw AppException.conflict("EQUIPMENT_IN_USE","Thiết bị đang thuộc phòng họp. Hãy gỡ khỏi các phòng trước khi ngừng sử dụng.");
+            throw AppException.conflict("EQUIPMENT_IN_USE","This equipment is assigned to a meeting room. Remove it from the room before deactivating it.");
         apply(item,req);EquipmentResponse saved=response(equipment.save(item));
         socket.publish("EQUIPMENT_CHANGED");socket.publish("ROOM_CHANGED");return saved;
     }
     public void delete(String id){
         Equipment item=find(id);
-        if(isAssigned(id))throw AppException.conflict("EQUIPMENT_IN_USE","Thiết bị đang được gán cho phòng họp. Hãy gỡ khỏi các phòng trước khi xóa.");
+        if(isAssigned(id))throw AppException.conflict("EQUIPMENT_IN_USE","This equipment is assigned to a meeting room. Remove it from the room before deleting it.");
         equipment.delete(item);socket.publish("EQUIPMENT_CHANGED");
     }
     private boolean isAssigned(String id){return rooms.existsByEquipmentIdsContaining(id);}
     private void apply(Equipment item,EquipmentRequest req){
         String category=req.category().trim().toUpperCase(Locale.ROOT);
-        if(!CATEGORIES.contains(category))throw AppException.badRequest("INVALID_EQUIPMENT_CATEGORY","Loại thiết bị không hợp lệ");
+        if(!CATEGORIES.contains(category))throw AppException.badRequest("INVALID_EQUIPMENT_CATEGORY","Invalid equipment category.");
         item.setCode(req.code().trim().toUpperCase(Locale.ROOT));
         item.setName(req.name().trim());item.setCategory(category);
         item.setDescription(req.description()==null?"":req.description().trim());item.setStatus(req.status());

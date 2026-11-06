@@ -25,11 +25,12 @@ public class RoomService {
     public RoomService(MeetingRoomRepository rooms,EquipmentRepository equipment,BookingRepository bookings,Clock clock,AppSocketPublisher socket,NotificationService notifications,MongoRoomApprovalLockService approvalLocks){this.rooms=rooms;this.equipment=equipment;this.bookings=bookings;this.clock=clock;this.socket=socket;this.notifications=notifications;this.approvalLocks=approvalLocks;}
     public List<RoomResponse> list(){return rooms.findAllByOrderByNameAsc().stream().map(ResponseMapper::room).toList();}
     public RoomResponse get(String id){return ResponseMapper.room(find(id));}
-    MeetingRoom find(String id){return rooms.findById(id).orElseThrow(()->AppException.notFound("Không tìm thấy phòng họp"));}
+    MeetingRoom find(String id){return rooms.findById(id).orElseThrow(()->AppException.notFound("Meeting room not found."));}
 
     public RoomResponse create(RoomRequest req,User actor){
         requireRoomManager(actor);
-        if(rooms.existsByCodeIgnoreCase(req.code().trim())) throw AppException.conflict("ROOM_CODE_EXISTS","Mã phòng đã tồn tại");
+        if(rooms.existsByCodeIgnoreCase(req.code().trim())) throw AppException.conflict("ROOM_CODE_EXISTS","This room code already exists.");
+        validateRoomColor(req.color(), null);
         MeetingRoom r=new MeetingRoom(); apply(r,req); RoomResponse saved=ResponseMapper.room(rooms.save(r));
         notifications.notifyAllEnabledExcept(actor.getId(),NotificationType.ROOM_CREATED,"New meeting room",
                 actor.getFullName()+" added "+saved.name()+".","ROOM",saved.id(),"/rooms");
@@ -38,21 +39,22 @@ public class RoomService {
     public RoomResponse update(String id,RoomRequest req,User actor){
         requireRoomManager(actor);
         String token=approvalLocks.tryAcquire(id,BookingLockConstants.ROOM_UPDATE_LOCK_TTL);
-        if(token==null) throw AppException.conflict("ROOM_UPDATE_BUSY", "Phòng đang được phê duyệt hoặc cập nhật. Vui lòng thử lại.");
+        if(token==null) throw AppException.conflict("ROOM_UPDATE_BUSY", "This room is currently being approved or updated. Please try again.");
         try { return updateLocked(id,req,actor); }
         finally { approvalLocks.release(id,token); }
     }
     private RoomResponse updateLocked(String id,RoomRequest req,User actor){
         MeetingRoom r=find(id);
+        validateRoomColor(req.color(), id);
         if(!r.getCode().equalsIgnoreCase(req.code().trim()) && rooms.existsByCodeIgnoreCase(req.code().trim()))
-            throw AppException.conflict("ROOM_CODE_EXISTS","Mã phòng đã tồn tại");
+            throw AppException.conflict("ROOM_CODE_EXISTS","This room code already exists.");
         if(req.status()!=RoomStatus.AVAILABLE && r.getStatus()==RoomStatus.AVAILABLE){
             long future=bookings.countByRoomIdAndStatusAndEndAtAfter(id,BookingStatus.APPROVED,LocalDateTime.now(clock));
-            if(future>0) throw AppException.conflict("ROOM_HAS_BOOKINGS","Phòng đang có lịch đã duyệt trong tương lai. Hãy xử lý các booking trước khi khóa phòng.");
+            if(future>0) throw AppException.conflict("ROOM_HAS_BOOKINGS","This room has future approved bookings. Resolve them before disabling the room.");
         }
         if (req.capacity() < r.getCapacity() && bookings.existsByRoomIdAndStatusAndEndAtAfterAndAttendeeCountGreaterThan(
                 id, BookingStatus.APPROVED, LocalDateTime.now(clock), req.capacity())) {
-            throw AppException.conflict("ROOM_CAPACITY_CONFLICT", "Có lịch đã duyệt trong tương lai có số người vượt sức chứa mới.");
+            throw AppException.conflict("ROOM_CAPACITY_CONFLICT", "Some future approved bookings exceed the new room capacity.");
         }
         apply(r,req); RoomResponse saved=ResponseMapper.room(rooms.save(r));
         notifications.notifyAllEnabledExcept(actor.getId(),NotificationType.ROOM_UPDATED,"Meeting room updated",
@@ -63,7 +65,7 @@ public class RoomService {
         requireRoomManager(actor);
         MeetingRoom r=find(id);
         if(bookings.existsByRoomId(id))
-            throw AppException.conflict("ROOM_HAS_HISTORY","Phòng đã có lịch sử đặt phòng nên không thể xóa. Hãy chuyển trạng thái sang DISABLED.");
+            throw AppException.conflict("ROOM_HAS_HISTORY","This room has booking history and cannot be deleted. Set its status to DISABLED instead.");
         String roomName=r.getName();
         rooms.delete(r);
         notifications.notifyAllEnabledExcept(actor.getId(),NotificationType.ROOM_DELETED,"Meeting room removed",
@@ -72,19 +74,28 @@ public class RoomService {
     }
     private void requireRoomManager(User actor){
         if(actor==null || !actor.getRole().canManageRooms())
-            throw AppException.forbidden("Bạn không có quyền quản lý phòng họp");
+            throw AppException.forbidden("You do not have permission to manage meeting rooms.");
+    }
+    private void validateRoomColor(String color, String currentRoomId) {
+        if (!RoomColors.valid(color))
+            throw AppException.badRequest("ROOM_COLOR_INVALID", "Select a color from the meeting room palette.");
+        boolean taken = currentRoomId == null ? rooms.existsByColor(color) : rooms.existsByColorAndIdNot(color, currentRoomId);
+        if (taken)
+            throw AppException.conflict("ROOM_COLOR_EXISTS", "This color is already assigned to another room. Please choose a different color.");
+        // Unique sparse MongoDB index on MeetingRoom.color also handles concurrent creates.
     }
     private void apply(MeetingRoom r,RoomRequest req){
+        r.setColor(req.color());
         r.setCode(req.code().trim().toUpperCase());r.setName(req.name().trim());r.setLocation(req.location().trim());r.setCapacity(req.capacity());
         r.setDescription(req.description());r.setStatus(req.status());
         // Null means a legacy client sent only "amenities"; [] explicitly means no equipment.
         if(req.equipmentIds()!=null){
             Set<String> ids=new LinkedHashSet<>(req.equipmentIds());
-            if(ids.size()!=req.equipmentIds().size())throw AppException.badRequest("DUPLICATE_EQUIPMENT","Một thiết bị không thể chọn nhiều lần");
+            if(ids.size()!=req.equipmentIds().size())throw AppException.badRequest("DUPLICATE_EQUIPMENT","The same equipment cannot be selected more than once.");
             var selected=equipment.findAllById(ids);
-            if(selected.size()!=ids.size())throw AppException.badRequest("UNKNOWN_EQUIPMENT","Danh sách có thiết bị không tồn tại");
+            if(selected.size()!=ids.size())throw AppException.badRequest("UNKNOWN_EQUIPMENT","The equipment list contains unknown items.");
             for(var device:selected){
-                if(device.getStatus()==EquipmentStatus.INACTIVE)throw AppException.badRequest("INACTIVE_EQUIPMENT","Không thể gán thiết bị đã ngừng sử dụng: "+device.getName());
+                if(device.getStatus()==EquipmentStatus.INACTIVE)throw AppException.badRequest("INACTIVE_EQUIPMENT","Inactive equipment cannot be assigned: "+device.getName());
             }
             r.setEquipmentIds(List.copyOf(ids));
             r.setAmenities(selected.stream().map(Equipment::getName).sorted().reduce((a,b)->a+", "+b).orElse(""));

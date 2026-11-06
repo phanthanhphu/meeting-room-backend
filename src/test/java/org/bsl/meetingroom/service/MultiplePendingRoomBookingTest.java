@@ -56,7 +56,7 @@ class MultiplePendingRoomBookingTest {
         when(rules.getBusinessStart()).thenReturn(LocalTime.of(7,0));
         when(rules.getBusinessEnd()).thenReturn(LocalTime.of(18,0));
         when(rules.getMinDurationMinutes()).thenReturn(15);
-        when(rules.getMaxDurationMinutes()).thenReturn(240);
+        when(rules.getMaxDurationMinutes()).thenReturn(660);
         when(rules.getMaxAdvanceDays()).thenReturn(90);
         when(rooms.findById(anyString())).thenAnswer(inv -> Optional.of(room(inv.getArgument(0))));
         when(locks.tryAcquire(anyString(),any())).thenReturn("lock-token");
@@ -151,6 +151,39 @@ class MultiplePendingRoomBookingTest {
         assertEquals("room-1",slots.get(0).roomId());
         assertEquals(BookingStatus.PENDING,slots.get(0).status());
         assertEquals("room-2",slots.get(1).roomId());
+    }
+
+
+    @Test void fullWorkingDayFromSevenToEighteenIsAllowed(){
+        BookingRequest fullDay=new BookingRequest("room-1","Full day workshop","",3,
+                LocalDateTime.of(2026,11,9,7,0),LocalDateTime.of(2026,11,9,18,0));
+        assertDoesNotThrow(() -> service.create(fullDay,owner("a")));
+        verify(bookings).countByRoomIdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(
+                eq("room-1"),eq(BLOCKING),eq(fullDay.endAt()),eq(fullDay.startAt()));
+    }
+
+    @Test void fullWorkingDayBlocksOtherRequestsInSameRoom(){
+        BookingRequest fullDay=new BookingRequest("room-1","Full day workshop","",3,
+                LocalDateTime.of(2026,11,9,7,0),LocalDateTime.of(2026,11,9,18,0));
+        when(bookings.countByRoomIdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(
+                eq("room-1"),eq(BLOCKING),eq(fullDay.endAt()),eq(fullDay.startAt()))).thenReturn(1L);
+        AppException error=assertThrows(AppException.class,() -> service.create(fullDay,owner("b")));
+        assertEquals("ROOM_TIME_CONFLICT",error.getCode());
+    }
+
+    @Test void sameUserCanRequestDifferentRoomForEntireWorkingDay(){
+        BookingRequest fullDay=new BookingRequest("room-2","Full day workshop","",3,
+                LocalDateTime.of(2026,11,9,7,0),LocalDateTime.of(2026,11,9,18,0));
+        assertDoesNotThrow(() -> service.create(fullDay,owner("a")));
+        verify(bookings).countByRoomIdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(
+                eq("room-2"),eq(BLOCKING),eq(fullDay.endAt()),eq(fullDay.startAt()));
+    }
+
+    @Test void outsideBusinessHoursStillRejected(){
+        BookingRequest outside=new BookingRequest("room-1","Full day workshop","",3,
+                LocalDateTime.of(2026,11,9,6,45),LocalDateTime.of(2026,11,9,18,0));
+        AppException error=assertThrows(AppException.class,() -> service.create(outside,owner("a")));
+        assertEquals("OUTSIDE_BUSINESS_HOURS",error.getCode());
     }
 
     @Test void occupiedSlotsExcludeOnlyOwnedBookingWhileEditing(){

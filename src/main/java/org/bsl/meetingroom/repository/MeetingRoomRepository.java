@@ -7,6 +7,8 @@ import java.util.List;
 
 public interface MeetingRoomRepository extends MongoRepository<MeetingRoom,String>{
     boolean existsByCodeIgnoreCase(String code);
+    boolean existsByColor(String color);
+    boolean existsByColorAndIdNot(String color, String id);
     boolean existsByEquipmentIdsContaining(String equipmentId);
     List<MeetingRoom> findAllByOrderByNameAsc();
     List<MeetingRoom> findByStatusOrderByNameAsc(RoomStatus status);

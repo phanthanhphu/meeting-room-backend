@@ -41,13 +41,14 @@ public final class Dtos {
     public record RoomRequest(
             @NotBlank @Size(max=40) String code,
             @NotBlank @Size(max=120) String name,
+            @NotBlank String color,
             @NotBlank @Size(max=160) String location,
             @Min(1) @Max(500) int capacity,
             @Size(max=1000) String description,
             @Size(max=1000) String amenities,
             @NotNull RoomStatus status,
             List<@NotBlank String> equipmentIds) {}
-    public record RoomResponse(String id,String code,String name,String location,int capacity,String description,String amenities,RoomStatus status,List<String> equipmentIds) {}
+    public record RoomResponse(String id,String code,String name,String color,String location,int capacity,String description,String amenities,RoomStatus status,List<String> equipmentIds) {}
 
     public record EquipmentRequest(
             @NotBlank @Size(max=40) String code,

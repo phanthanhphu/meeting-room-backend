@@ -11,6 +11,7 @@ import java.util.List;
 public class MeetingRoom {
     @Id private String id;
     @Indexed(unique=true) private String code;
+    @Indexed(unique=true, sparse=true) private String color;
     private String name;
     private String location;
     private int capacity;
@@ -27,6 +28,7 @@ public class MeetingRoom {
 
     public String getId(){return id;} public void setId(String id){this.id=id;}
     public String getCode(){return code;} public void setCode(String v){code=v;}
+    public String getColor(){return color;} public void setColor(String v){color=v;}
     public String getName(){return name;} public void setName(String v){name=v;}
     public String getLocation(){return location;} public void setLocation(String v){location=v;}
     public int getCapacity(){return capacity;} public void setCapacity(int v){capacity=v;}

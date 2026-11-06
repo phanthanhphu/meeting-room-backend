@@ -29,8 +29,8 @@ public class NotificationService {
     public long unreadCount(User user){ return notifications.countByRecipientUserIdAndReadFalse(user.getId()); }
 
     public NotificationResponse markRead(String id, User user){
-        AppNotification n=notifications.findById(id).orElseThrow(()->AppException.notFound("Không tìm thấy thông báo"));
-        if(!Objects.equals(n.getRecipientUserId(),user.getId())) throw AppException.forbidden("Bạn không có quyền cập nhật thông báo này");
+        AppNotification n=notifications.findById(id).orElseThrow(()->AppException.notFound("Notification not found."));
+        if(!Objects.equals(n.getRecipientUserId(),user.getId())) throw AppException.forbidden("You do not have permission to update this notification.");
         if(!n.isRead()){
             n.setRead(true); n.setReadAt(LocalDateTime.now(clock)); n=notifications.save(n);
             socket.publish("NOTIFICATION_CHANGED");

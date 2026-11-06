@@ -8,7 +8,7 @@ public class BookingRulesProperties {
     private LocalTime businessStart=LocalTime.of(7,0);
     private LocalTime businessEnd=LocalTime.of(18,0);
     private long minDurationMinutes=15;
-    private long maxDurationMinutes=240;
+    private long maxDurationMinutes=660;
     private long maxAdvanceDays=90;
     public LocalTime getBusinessStart(){return businessStart;} public void setBusinessStart(LocalTime v){businessStart=v;}
     public LocalTime getBusinessEnd(){return businessEnd;} public void setBusinessEnd(LocalTime v){businessEnd=v;}
