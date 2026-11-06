@@ -21,6 +21,9 @@ public class BookingController {
     @PatchMapping("/{id}/cancel") @PreAuthorize("hasAnyRole('USER','ROOM_MANAGER','ADMIN')") public BookingResponse cancel(@PathVariable String id){return service.cancel(id,auth.current());}
     @DeleteMapping("/{id}") @PreAuthorize("hasRole('ADMIN')") public void delete(@PathVariable String id){service.delete(id,auth.current());}
     @GetMapping("/{id}/history") public List<HistoryResponse> history(@PathVariable String id){return service.history(id,auth.current());}
+    @GetMapping("/occupied") public List<RoomOccupiedSlotResponse> occupied(
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required=false) String excludeId){return service.occupied(date,excludeId,auth.current());}
     @GetMapping("/calendar/range") public List<BookingResponse> calendar(
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to){return service.calendar(from,to,auth.current());}

@@ -8,6 +8,11 @@ import java.util.Collection;
 import java.util.List;
 
 public interface BookingRepository extends MongoRepository<Booking,String>{
+    long countByRoomIdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(
+            String roomId, Collection<BookingStatus> statuses, LocalDateTime endAt, LocalDateTime startAt);
+    long countByRoomIdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
+            String roomId, Collection<BookingStatus> statuses, LocalDateTime endAt, LocalDateTime startAt, String id);
+
     long countByRoomIdAndStatusAndStartAtLessThanAndEndAtGreaterThan(
             String roomId, BookingStatus status, LocalDateTime endAt, LocalDateTime startAt);
     long countByRoomIdAndStatusAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
@@ -17,6 +22,11 @@ public interface BookingRepository extends MongoRepository<Booking,String>{
             String userId, Collection<BookingStatus> statuses, LocalDateTime endAt, LocalDateTime startAt);
     long countByCreatedByIdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
             String userId, Collection<BookingStatus> statuses, LocalDateTime endAt, LocalDateTime startAt, String id);
+
+    long countByCreatedByIdAndRoomIdAndStatusAndStartAtLessThanAndEndAtGreaterThan(
+            String userId, String roomId, BookingStatus status, LocalDateTime endAt, LocalDateTime startAt);
+    long countByCreatedByIdAndRoomIdAndStatusAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
+            String userId, String roomId, BookingStatus status, LocalDateTime endAt, LocalDateTime startAt, String id);
 
     List<Booking> findByCreatedByIdOrderByStartAtDesc(String userId);
     List<Booking> findAllByOrderByStartAtDesc();

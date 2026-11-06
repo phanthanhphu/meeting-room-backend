@@ -76,15 +76,19 @@ public class BookingService {
     private BookingResponse createLocked(BookingRequest req,User actor){
         if(actor.getRole().isReadOnly()) throw AppException.forbidden("VIEWER accounts cannot create bookings.");
         MeetingRoom room=findRoom(req.roomId());
-        validate(room,req,actor,null,true);
-        Booking b=new Booking();
-        b.setRoomId(room.getId());
-        b.setCreatedById(actor.getId());
-        b.setCreatedByAccount(actor.getDomainAccount()!=null && !actor.getDomainAccount().isBlank()?actor.getDomainAccount():actor.getUsername());
-        b.setCreatedByEmail(actor.getEmail());
-        apply(b,req);
-        b.setStatus(BookingStatus.PENDING);
-        b=bookings.save(b);
+        // Lock the room for both booking requests and approvals, including requests
+        // from DIFFERENT users. The room, not the requester, determines conflicts.
+        Booking b=withRoomBookingLock(room.getId(), () -> {
+            validate(room,req,null);
+            Booking created=new Booking();
+            created.setRoomId(room.getId());
+            created.setCreatedById(actor.getId());
+            created.setCreatedByAccount(actor.getDomainAccount()!=null && !actor.getDomainAccount().isBlank()?actor.getDomainAccount():actor.getUsername());
+            created.setCreatedByEmail(actor.getEmail());
+            apply(created,req);
+            created.setStatus(BookingStatus.PENDING);
+            return bookings.save(created);
+        });
         addHistory(b,actor,BookingAction.CREATED,"Booking request created");
         notifications.notifyBookingManagersExcept(actor.getId(),NotificationType.BOOKING_CREATED,"New booking request",
                 actor.getFullName()+" requested "+room.getName()+" · "+b.getTitle(),"BOOKING",b.getId(),"/approvals");
@@ -108,10 +112,13 @@ public class BookingService {
 
         MeetingRoom room=findRoom(req.roomId());
         User owner=users.findById(b.getCreatedById()).orElseThrow(()->AppException.notFound("Booking requester not found."));
-        validate(room,req,owner,id,true);
-        b.setRoomId(room.getId());
-        apply(b,req);
-        b=bookings.save(b);
+        Booking pending=b;
+        b=withRoomBookingLock(room.getId(), () -> {
+            validate(room,req,id);
+            pending.setRoomId(room.getId());
+            apply(pending,req);
+            return bookings.save(pending);
+        });
         addHistory(b,actor,BookingAction.UPDATED,"Pending booking updated");
         if(actor.getRole().canManageBookings() && !Objects.equals(actor.getId(),owner.getId())){
             notifications.notifyUser(owner.getId(),NotificationType.BOOKING_UPDATED,"Booking updated by Manager",
@@ -151,10 +158,10 @@ public class BookingService {
             if(!b.getStartAt().isAfter(now))
                 throw AppException.badRequest("BOOKING_PAST","A meeting that has started or ended cannot be approved.");
             validateTimeAndCapacity(room,b.getAttendeeCount(),b.getStartAt(),b.getEndAt());
-            if(countUserApprovedConflicts(b.getCreatedById(),b.getStartAt(),b.getEndAt(),b.getId())>0)
-                throw AppException.conflict("USER_TIME_CONFLICT", "The requester already has an overlapping approved meeting.");
-            if(countRoomConflicts(room.getId(),b.getStartAt(),b.getEndAt(),b.getId())>0)
-                throw AppException.conflict("ROOM_TIME_CONFLICT","This time slot has already been approved for another booking.");
+            // Approval checks the room only. A user may have meetings in different
+            // rooms at the same time; existing APPROVED bookings in THIS room block.
+            if(countApprovedRoomConflicts(room.getId(),b.getStartAt(),b.getEndAt(),b.getId())>0)
+                throw AppException.conflict("ROOM_TIME_CONFLICT","This room already has an overlapping approved meeting.");
 
             b.setStatus(BookingStatus.APPROVED);
             b.setApprovedById(admin.getId());
@@ -284,19 +291,14 @@ public class BookingService {
         return history.findByBookingIdOrderByCreatedAtAsc(id).stream().map(mapper::history).toList();
     }
 
-    private void validate(MeetingRoom room,BookingRequest req,User user,String excludeId,boolean checkUserOverlap){
+    private void validate(MeetingRoom room,BookingRequest req,String excludeId){
         if(room.getStatus()!=RoomStatus.AVAILABLE)
             throw AppException.badRequest("ROOM_UNAVAILABLE","The room is unavailable (maintenance or disabled).");
         validateTimeAndCapacity(room,req.attendeeCount(),req.startAt(),req.endAt());
-        if(countRoomConflicts(room.getId(),req.startAt(),req.endAt(),excludeId)>0)
-            throw AppException.conflict("ROOM_TIME_CONFLICT","The room already has an overlapping approved meeting.");
-        if(checkUserOverlap && countUserOverlaps(user.getId(),req.startAt(),req.endAt(),excludeId)>0)
-            throw AppException.conflict("USER_TIME_CONFLICT","You already have an overlapping pending or approved booking.");
-    }
-
-    private long countUserApprovedConflicts(String userId,LocalDateTime start,LocalDateTime end,String excludeId){
-        return bookings.countByCreatedByIdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
-                userId,List.of(BookingStatus.APPROVED),end,start,excludeId);
+        // Both PENDING and APPROVED reserve the room's requested time. Other rooms
+        // never block the user, even when their requests have already been approved.
+        if(countOccupiedRoomConflicts(room.getId(),req.startAt(),req.endAt(),excludeId)>0)
+            throw AppException.conflict("ROOM_TIME_CONFLICT","This room already has a pending or approved booking during the selected time.");
     }
 
     private <T> T withUserBookingLock(String userId, java.util.function.Supplier<T> action) {
@@ -307,17 +309,44 @@ public class BookingService {
         finally { approvalLocks.release(lockId,token); }
     }
 
-    private long countRoomConflicts(String roomId,LocalDateTime start,LocalDateTime end,String excludeId){
+    private <T> T withRoomBookingLock(String roomId, java.util.function.Supplier<T> action) {
+        // Must use the SAME lock key as approveLocked for cross-user serialization.
+        String token=approvalLocks.tryAcquire(roomId,BookingLockConstants.ROOM_UPDATE_LOCK_TTL);
+        if(token==null) throw AppException.conflict("ROOM_BOOKING_BUSY", "Another booking operation is in progress for this room. Please try again.");
+        try { return action.get(); }
+        finally { approvalLocks.release(roomId,token); }
+    }
+
+    private long countApprovedRoomConflicts(String roomId,LocalDateTime start,LocalDateTime end,String excludeId){
         if(excludeId==null)
             return bookings.countByRoomIdAndStatusAndStartAtLessThanAndEndAtGreaterThan(roomId,BookingStatus.APPROVED,end,start);
         return bookings.countByRoomIdAndStatusAndStartAtLessThanAndEndAtGreaterThanAndIdNot(roomId,BookingStatus.APPROVED,end,start,excludeId);
     }
 
-    private long countUserOverlaps(String userId,LocalDateTime start,LocalDateTime end,String excludeId){
-        List<BookingStatus> statuses=List.of(BookingStatus.PENDING,BookingStatus.APPROVED);
+    private long countOccupiedRoomConflicts(String roomId,LocalDateTime start,LocalDateTime end,String excludeId){
+        List<BookingStatus> blocking=List.of(BookingStatus.PENDING,BookingStatus.APPROVED);
         if(excludeId==null)
-            return bookings.countByCreatedByIdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(userId,statuses,end,start);
-        return bookings.countByCreatedByIdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(userId,statuses,end,start,excludeId);
+            return bookings.countByRoomIdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(roomId,blocking,end,start);
+        return bookings.countByRoomIdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(roomId,blocking,end,start,excludeId);
+    }
+
+    /** Anonymous busy slots, including other users' PENDING bookings. No private booking data. */
+    public List<RoomOccupiedSlotResponse> occupied(LocalDate date,String excludeId,User actor){
+        if(date==null) throw AppException.badRequest("DATE_REQUIRED","A booking date is required.");
+        if(excludeId!=null && !excludeId.isBlank()){
+            Booking own=find(excludeId);
+            authorizeOwnerOrAdmin(own,actor);
+            if(own.getStatus()!=BookingStatus.PENDING)
+                throw AppException.badRequest("NOT_PENDING","Only PENDING bookings can be excluded when editing.");
+        }
+        LocalDateTime dayStart=date.atStartOfDay();
+        LocalDateTime dayEnd=date.plusDays(1).atStartOfDay();
+        return bookings.findByStatusInAndStartAtLessThanAndEndAtGreaterThanOrderByStartAtAsc(
+                        List.of(BookingStatus.PENDING,BookingStatus.APPROVED),dayEnd,dayStart)
+                .stream()
+                .filter(b -> excludeId==null || !Objects.equals(b.getId(),excludeId))
+                .map(b -> new RoomOccupiedSlotResponse(b.getRoomId(),b.getStartAt(),b.getEndAt(),b.getStatus()))
+                .toList();
     }
 
     private void validateTimeAndCapacity(MeetingRoom room,int attendees,LocalDateTime start,LocalDateTime end){

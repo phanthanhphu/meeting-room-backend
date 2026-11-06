@@ -71,6 +71,7 @@ public final class Dtos {
             LocalDateTime startAt, LocalDateTime endAt, BookingStatus status, String adminNote,
             UserResponse approvedBy, LocalDateTime approvedAt, LocalDateTime rejectedAt,
             LocalDateTime cancelledAt, LocalDateTime createdAt, LocalDateTime updatedAt) {}
+    public record RoomOccupiedSlotResponse(String roomId,LocalDateTime startAt,LocalDateTime endAt,BookingStatus status) {}
     public record HistoryResponse(String id, BookingAction action, UserResponse actor, String note, LocalDateTime createdAt) {}
     public record NotificationResponse(String id, NotificationType type, String title, String message, String entityType, String entityId, String actionPath, boolean read, LocalDateTime createdAt, LocalDateTime readAt) {}
     public record UnreadNotificationCountResponse(long count) {}
