@@ -12,6 +12,7 @@ import java.time.*;
 import java.util.List;
 import java.util.Set;
 import java.util.LinkedHashSet;
+import java.util.Objects;
 
 @Service
 public class RoomService {
@@ -45,7 +46,7 @@ public class RoomService {
     }
     private RoomResponse updateLocked(String id,RoomRequest req,User actor){
         MeetingRoom r=find(id);
-        validateRoomColor(req.color(), id);
+        validateRoomColor(req.color(), r);
         if(!r.getCode().equalsIgnoreCase(req.code().trim()) && rooms.existsByCodeIgnoreCase(req.code().trim()))
             throw AppException.conflict("ROOM_CODE_EXISTS","This room code already exists.");
         if(req.status()!=RoomStatus.AVAILABLE && r.getStatus()==RoomStatus.AVAILABLE){
@@ -76,10 +77,17 @@ public class RoomService {
         if(actor==null || !actor.getRole().canManageRooms())
             throw AppException.forbidden("You do not have permission to manage meeting rooms.");
     }
-    private void validateRoomColor(String color, String currentRoomId) {
-        if (!RoomColors.valid(color))
+    private void validateRoomColor(String color, MeetingRoom currentRoom) {
+        // New choices must come from the current palette. When an existing room is
+        // edited for any other reason, its saved legacy hex is preserved verbatim.
+        boolean unchangedLegacy = currentRoom != null
+                && Objects.equals(color, currentRoom.getColor())
+                && RoomColors.storedHex(color);
+        if (!RoomColors.valid(color) && !unchangedLegacy)
             throw AppException.badRequest("ROOM_COLOR_INVALID", "Select a color from the meeting room palette.");
-        boolean taken = currentRoomId == null ? rooms.existsByColor(color) : rooms.existsByColorAndIdNot(color, currentRoomId);
+        boolean taken = currentRoom == null
+                ? rooms.existsByColor(color)
+                : rooms.existsByColorAndIdNot(color, currentRoom.getId());
         if (taken)
             throw AppException.conflict("ROOM_COLOR_EXISTS", "This color is already assigned to another room. Please choose a different color.");
         // Unique sparse MongoDB index on MeetingRoom.color also handles concurrent creates.

@@ -1,6 +1,8 @@
 package org.bsl.meetingroom.config;
 
 import org.bsl.meetingroom.model.Role;
+import org.bsl.meetingroom.model.MeetingRoom;
+import org.bsl.meetingroom.model.RoomColors;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -152,6 +154,39 @@ class DataInitializerTest {
         callOrder.verify(mongoTemplate, times(2)).updateMulti(any(Query.class), any(Update.class), eq("users"));
         callOrder.verify(users).findByEmailIgnoreCase("admin@youngonevn.com");
         verify(users).findAll();
+    }
+
+    @Test
+    void startupUpgradesOldRoomPaletteWithoutReassigningRoomsAlreadyUsingNewPalette() throws Exception {
+        UserRepository users = mock(UserRepository.class);
+        MeetingRoomRepository rooms = mock(MeetingRoomRepository.class);
+        EquipmentRepository equipment = mock(EquipmentRepository.class);
+        PasswordEncoder encoder = new BCryptPasswordEncoder(4);
+        MongoTemplate mongoTemplate = mock(MongoTemplate.class);
+        when(mongoTemplate.findDistinct(any(Query.class), eq("role"), eq("users"), eq(String.class)))
+                .thenReturn(List.of());
+        when(rooms.count()).thenReturn(3L);
+
+        MeetingRoom oldBlue = new MeetingRoom();
+        oldBlue.setId("room-a"); oldBlue.setCode("A"); oldBlue.setColor("#426B91");
+        MeetingRoom oldGreen = new MeetingRoom();
+        oldGreen.setId("room-b"); oldGreen.setCode("B"); oldGreen.setColor("#477C76");
+        MeetingRoom alreadyNew = new MeetingRoom();
+        alreadyNew.setId("room-c"); alreadyNew.setCode("C");
+        alreadyNew.setColor(RoomColors.PALETTE.get(1));
+
+        when(rooms.findAll()).thenReturn(List.of(oldBlue, oldGreen, alreadyNew));
+        when(rooms.save(any(MeetingRoom.class))).thenAnswer(inv -> inv.getArgument(0));
+        new DataInitializer().seed(users, rooms, equipment, encoder, mongoTemplate, "BootstrapSecret@2026").run();
+
+        assertEquals(RoomColors.PALETTE.get(0), oldBlue.getColor());
+        assertEquals(RoomColors.PALETTE.get(2), oldGreen.getColor());
+        assertEquals(RoomColors.PALETTE.get(1), alreadyNew.getColor());
+        assertEquals("room-a", oldBlue.getId());
+        assertEquals("room-b", oldGreen.getId());
+        verify(rooms).save(oldBlue);
+        verify(rooms).save(oldGreen);
+        verify(rooms, never()).save(alreadyNew);
     }
 
 }

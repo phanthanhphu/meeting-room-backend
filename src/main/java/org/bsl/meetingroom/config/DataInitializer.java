@@ -61,30 +61,38 @@ public class DataInitializer {
                 rooms.save(room("MR-02", "Saigon Room", "Floor 2", 16, "Projector, Teams Camera, Speaker"));
                 rooms.save(room("MR-03", "Executive Room", "Floor 3", 24, "4K Display, Video Conference, Whiteboard"));
             }
-            migrateLegacyRoomColors(rooms);
+            assignColorsToUnconfiguredRooms(rooms);
             migrateLegacyAmenities(rooms, equipment);
         };
     }
 
-    /** Assign a distinct calm color to each pre-existing room without touching its bookings. */
-    private void migrateLegacyRoomColors(MeetingRoomRepository rooms) {
+    /**
+     * Assign a color only to rooms that have never been configured. Never rewrite
+     * an existing color, including a color from an older palette. A different room's
+     * color must not change because of an unrelated edit or application restart.
+     */
+    private void assignColorsToUnconfiguredRooms(MeetingRoomRepository rooms) {
         var existing = rooms.findAll().stream()
                 .sorted(Comparator.comparing(MeetingRoom::getCode, Comparator.nullsLast(String::compareTo)))
                 .toList();
         Set<String> used = new HashSet<>();
         for (MeetingRoom room : existing) {
-            if (RoomColors.valid(room.getColor())) used.add(room.getColor());
+            if (room.getColor() != null && !room.getColor().isBlank()) {
+                used.add(room.getColor().toUpperCase(Locale.ROOT));
+            }
         }
         for (MeetingRoom room : existing) {
-            if (RoomColors.valid(room.getColor())) continue;
+            // Even an old or custom persisted color belongs to its room: never change it.
+            if (room.getColor() != null && !room.getColor().isBlank()) continue;
             String next = RoomColors.availableColor(used);
             if (next == null) {
-                log.warn("Room color palette exhausted for room {}. Add more colors before adding further rooms.", room.getCode());
+                log.warn("No free room colors for unconfigured room {}.", room.getCode());
                 continue;
             }
             room.setColor(next);
             rooms.save(room);
             used.add(next);
+            log.info("Assigned an initial color to previously unconfigured room {}.", room.getCode());
         }
     }
 

@@ -8,6 +8,7 @@ import org.bsl.meetingroom.repository.*;
 import org.junit.jupiter.api.Test;
 import java.time.Clock;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -31,10 +32,20 @@ class RoomColorsTest {
     private RoomRequest request(String color) {
         return new RoomRequest("MR-NEW","Boardroom",color,"Floor 2",12,"","",RoomStatus.AVAILABLE,null);
     }
-    @Test void paletteContainsOnlyUniqueMutedHexColors() {
+    @Test void paletteContainsOnlyUniqueHexColors() {
         assertEquals(RoomColors.PALETTE.size(),new HashSet<>(RoomColors.PALETTE).size());
         assertTrue(RoomColors.PALETTE.size()>=24);
         for(String color: RoomColors.PALETTE) assertTrue(color.matches("#[0-9A-F]{6}"));
+    }
+    @Test void previouslySavedHexColorIsRecognizedButNotInNewPalette() {
+        assertFalse(RoomColors.valid("#426B91"));
+        assertTrue(RoomColors.storedHex("#426B91"));
+        assertTrue(RoomColors.storedHex("#426b91"));
+        assertFalse(RoomColors.storedHex("red"));
+        assertFalse(RoomColors.storedHex(null));
+    }
+    @Test void nextAvailableColorDoesNotReuseExistingAssignment() {
+        assertEquals(RoomColors.PALETTE.get(1), RoomColors.availableColor(Set.of(RoomColors.PALETTE.get(0))));
     }
     @Test void cannotSaveUnselectedOrArbitraryColor() {
         for(String color:new String[]{null,"", "#FF00FF", "#FFFFFF"}) {
@@ -75,5 +86,30 @@ class RoomColorsTest {
         var error=assertThrows(AppException.class,()->service.update("room-1",request(color),manager()));
         assertEquals("ROOM_COLOR_EXISTS",error.getCode());
         verify(rooms,never()).save(any(MeetingRoom.class));
+    }
+    @Test void editingOneRoomDoesNotSaveOtherRooms() {
+        MeetingRoom target=new MeetingRoom();target.setId("room-103");target.setCode("MR-NEW");target.setColor("#2D79C7");target.setCapacity(12);target.setStatus(RoomStatus.AVAILABLE);
+        MeetingRoom untouched=new MeetingRoom();untouched.setId("room-104");untouched.setCode("MR-104");untouched.setColor("#168F91");
+        when(locks.tryAcquire(eq("room-103"),any())).thenReturn("lock");
+        when(rooms.findById("room-103")).thenReturn(Optional.of(target));
+        when(rooms.save(any(MeetingRoom.class))).thenAnswer(inv->inv.getArgument(0));
+        var updated=service.update("room-103", request("#8058CF"), manager());
+        assertEquals("#8058CF", updated.color());
+        assertEquals("#168F91", untouched.getColor());
+        verify(rooms, times(1)).save(argThat(room -> "room-103".equals(room.getId())));
+        verify(rooms, never()).save(argThat(room -> "room-104".equals(room.getId())));
+    }
+    @Test void editingOtherFieldsDoesNotReplaceExistingLegacyRoomColor() {
+        MeetingRoom target=new MeetingRoom();target.setId("room-103");target.setCode("MR-NEW");target.setColor("#426B91");target.setCapacity(12);target.setStatus(RoomStatus.AVAILABLE);
+        when(locks.tryAcquire(eq("room-103"),any())).thenReturn("lock");
+        when(rooms.findById("room-103")).thenReturn(Optional.of(target));
+        when(rooms.save(any(MeetingRoom.class))).thenAnswer(inv->inv.getArgument(0));
+        var updated=service.update("room-103", request("#426B91"), manager());
+        assertEquals("#426B91", updated.color());
+        verify(rooms,times(1)).save(argThat(room -> "room-103".equals(room.getId())));
+    }
+    @Test void cannotAssignAnotherRoomAnArbitraryOldColor() {
+        var error=assertThrows(AppException.class,()->service.create(request("#426B91"), manager()));
+        assertEquals("ROOM_COLOR_INVALID", error.getCode());
     }
 }
